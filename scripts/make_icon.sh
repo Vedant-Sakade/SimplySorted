@@ -1,16 +1,14 @@
 #!/bin/bash
-# Regenerates Resources/AppIcon.icns from the SwiftUI drawing in Sources/TidyUp/IconRenderer.swift.
-# Run this after changing the icon, then run scripts/build_app.sh.
+# Regenerates Resources/AppIcon.icns from Resources/IconSource.png.
+# To change the icon: replace Resources/IconSource.png (a rounded tile on a light
+# backdrop), run this, then run scripts/build_app.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)/TidyUp"
 
 OUT=build/icon
 rm -rf "$OUT"
 mkdir -p "$OUT/AppIcon.iconset" Resources
-"$BIN" --render-icon "$OUT"
+swift scripts/icon_from_image.swift Resources/IconSource.png "$OUT/icon-1024.png"
 
 for s in 16 32 128 256 512; do
   sips -z "$s" "$s" "$OUT/icon-1024.png" --out "$OUT/AppIcon.iconset/icon_${s}x${s}.png" >/dev/null

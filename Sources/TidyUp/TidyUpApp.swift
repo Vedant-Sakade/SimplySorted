@@ -10,10 +10,6 @@ enum Launcher {
             MainActor.assumeIsolated { PreviewRenderer.render(to: args[i + 1]) }
             return
         }
-        if let i = args.firstIndex(of: "--render-icon"), i + 1 < args.count {
-            MainActor.assumeIsolated { IconRenderer.render(to: args[i + 1]) }
-            return
-        }
         TidyUpApp.main()
     }
 }
