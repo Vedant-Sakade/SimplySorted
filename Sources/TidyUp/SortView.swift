@@ -14,6 +14,14 @@ struct SortView: View {
             }
             .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
 
+            Toggle(isOn: Binding(get: { model.groupFolders }, set: { model.setGroupFolders($0) })) {
+                VStack(alignment: .leading) {
+                    Text("Also group folders")
+                    Text("Moves font-family folders into Fonts and mockup folders into Mockups. Other folders stay where they are.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+
             HStack {
                 Button("Add Folder…") {
                     if let url = chooseFolder(prompt: "Add") { model.addFolder(url) }
@@ -86,7 +94,7 @@ private struct PreviewGroup: View {
                 DisclosureGroup {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(plan.moves.filter { $0.category == category }, id: \.self) { move in
-                            Text(move.source.lastPathComponent).font(.callout).foregroundStyle(.secondary).lineLimit(1)
+                            Label(move.source.lastPathComponent, systemImage: move.source.hasDirectoryPath ? "folder" : "doc").font(.callout).foregroundStyle(.secondary).lineLimit(1)
                         }
                     }
                     .padding(.leading, 4)

@@ -18,6 +18,37 @@ public struct SortPlan: Sendable {
     }
 }
 
+/// Recognises folders that belong in Fonts or Mockups.
+enum FolderClassifier {
+    static func category(of folder: URL) -> Category? {
+        let name = folder.lastPathComponent.lowercased()
+        if name.contains("mockup") || name.contains("mock-up") || name.contains("mocup") { return .mockups }
+
+        // Count files up to three levels down; a folder is a font folder when fonts are at least half of it.
+        var fonts = 0, others = 0, designFiles = 0, seen = 0
+        let fm = FileManager.default
+        let base = folder.pathComponents.count
+        if let walker = fm.enumerator(at: folder, includingPropertiesForKeys: [.isRegularFileKey], options: [.skipsHiddenFiles]) {
+            for case let url as URL in walker {
+                if url.pathComponents.count - base > 3 { walker.skipDescendants(); continue }
+                guard (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else { continue }
+                seen += 1
+                if seen > 3000 { return nil }
+                let ext = url.pathExtension.lowercased()
+                if Category.fontExtensions.contains(ext) { fonts += 1 }
+                else {
+                    others += 1
+                    if Category.designExtensions.contains(ext) { designFiles += 1 }
+                }
+            }
+        }
+        // A folder with design files (an Illustrator package, a logo project...) is a project that merely bundles fonts.
+        guard fonts > 0, designFiles == 0 else { return nil }
+        let looksLikeFont = name.contains("font") || name.contains("typeface")
+        return (looksLikeFont || fonts * 2 >= fonts + others) ? .fonts : nil
+    }
+}
+
 /// A file that was moved. Paths are stored as strings so a run can be saved to disk and undone later.
 public struct MovedItem: Codable, Hashable, Sendable {
     public let from: String
@@ -53,9 +84,11 @@ public struct Sorter: Sendable {
 
     // MARK: Plan
 
-    public func plan(folder: URL, now: Date = Date()) throws -> SortPlan {
+    /// - Parameter groupFolders: also plan to move font-family folders into "Fonts" and mockup folders into "Mockups".
+    public func plan(folder: URL, groupFolders: Bool = false, now: Date = Date()) throws -> SortPlan {
         let fm = FileManager.default
-        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .isHiddenKey, .contentModificationDateKey]
+        let keys: [URLResourceKey] = [.isDirectoryKey, .isSymbolicLinkKey, .isHiddenKey, .isPackageKey, .contentModificationDateKey]
+        let reserved = Set(Category.allCases.map { $0.rawValue.lowercased() })
         let entries = try fm.contentsOfDirectory(at: folder, includingPropertiesForKeys: keys, options: [])
 
         var moves: [PlannedMove] = []
@@ -66,12 +99,24 @@ public struct Sorter: Sendable {
             let ext = url.pathExtension.lowercased()
 
             if name.hasPrefix(".") || values?.isHidden == true { skipped += 1; continue }
-            if values?.isDirectory == true || values?.isSymbolicLink == true { skipped += 1; continue }
+            if values?.isSymbolicLink == true { skipped += 1; continue }
+            if values?.isDirectory == true {
+                // Folders are left alone, except (when asked) font-family and mockup folders.
+                if groupFolders, values?.isPackage != true, !reserved.contains(name.lowercased()),
+                   let category = FolderClassifier.category(of: url) {
+                    moves.append(PlannedMove(source: url, category: category))
+                } else {
+                    skipped += 1
+                }
+                continue
+            }
             if Category.partialExtensions.contains(ext) { skipped += 1; continue }
             if let modified = values?.contentModificationDate, now.timeIntervalSince(modified) < minimumAge {
                 skipped += 1; continue
             }
-            moves.append(PlannedMove(source: url, category: Category.of(extension: ext)))
+            var category = Category.of(extension: ext)
+            if category == .other, let sniffed = ContentSniffer.category(of: url) { category = sniffed }
+            moves.append(PlannedMove(source: url, category: category))
         }
         moves.sort { $0.source.lastPathComponent.localizedStandardCompare($1.source.lastPathComponent) == .orderedAscending }
         return SortPlan(folder: folder, moves: moves, skipped: skipped)

@@ -20,6 +20,8 @@ final class AppModel {
     var lastRun: SortRun?
     var schedule = Schedule()
     var favorites: [String] = []
+    /// Also move font-family and mockup folders into Fonts / Mockups (off by default).
+    var groupFolders = false
     var message: String?
     var isWorking = false
     var loginItemEnabled = false
@@ -58,11 +60,12 @@ final class AppModel {
     func refresh() {
         let list = enabledFolders
         let sorter = sorter
+        let group = groupFolders
         Task.detached {
             var result: [String: SortPlan] = [:]
             var errors: [String] = []
             for folder in list {
-                do { result[folder.path] = try sorter.plan(folder: folder.url) }
+                do { result[folder.path] = try sorter.plan(folder: folder.url, groupFolders: group) }
                 catch { errors.append("\(folder.name): \(error.localizedDescription)") }
             }
             await MainActor.run { [result, errors] in
@@ -70,6 +73,11 @@ final class AppModel {
                 self.planErrors = errors
             }
         }
+    }
+
+    func setGroupFolders(_ on: Bool) {
+        groupFolders = on
+        save(); refresh()
     }
 
     func toggle(_ folder: WatchedFolder) {
@@ -97,11 +105,12 @@ final class AppModel {
         isWorking = true
         let list = enabledFolders
         let sorter = sorter
+        let group = groupFolders
         Task.detached {
             var plans: [SortPlan] = []
             var errors: [String] = []
             for folder in list {
-                do { plans.append(try sorter.plan(folder: folder.url)) }
+                do { plans.append(try sorter.plan(folder: folder.url, groupFolders: group)) }
                 catch { errors.append("\(folder.name): \(error.localizedDescription)") }
             }
             let run = sorter.sort(plans)
@@ -228,10 +237,11 @@ final class AppModel {
         var schedule: Schedule
         var favorites: [String]
         var scheduleReference: Date
+        var groupFolders: Bool?      // optional so older saved settings still load
     }
 
     private func save() {
-        let saved = Saved(folders: folders, schedule: schedule, favorites: favorites, scheduleReference: scheduleReference)
+        let saved = Saved(folders: folders, schedule: schedule, favorites: favorites, scheduleReference: scheduleReference, groupFolders: groupFolders)
         if let data = try? JSONEncoder().encode(saved) { defaults.set(data, forKey: "tidyup.state") }
     }
 
@@ -241,6 +251,7 @@ final class AppModel {
             schedule = saved.schedule
             favorites = saved.favorites
             scheduleReference = saved.scheduleReference
+            groupFolders = saved.groupFolders ?? false
         } else {
             let home = FileManager.default.homeDirectoryForCurrentUser
             folders = [

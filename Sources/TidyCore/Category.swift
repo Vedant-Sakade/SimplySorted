@@ -14,6 +14,7 @@ public enum Category: String, CaseIterable, Codable, Sendable {
     case installers = "Installers"
     case code = "Code"
     case fonts = "Fonts"
+    case mockups = "Mockups"
     case other = "Other"
 
     /// File extensions (lowercase, no dot) that belong to each category.
@@ -44,6 +45,12 @@ public enum Category: String, CaseIterable, Codable, Sendable {
     public static func of(extension ext: String) -> Category {
         lookup[ext.lowercased()] ?? .other
     }
+
+    /// Font file extensions (also used to recognise font-family folders).
+    static let fontExtensions: Set<String> = Set(extensions[.fonts] ?? [])
+
+    /// Design source files; a folder holding these is a project, not a font family.
+    static let designExtensions: Set<String> = Set(extensions[.design] ?? [])
 
     /// Extensions that mean "this file is still being written" - never moved.
     static let partialExtensions: Set<String> = ["crdownload", "download", "part", "partial", "tmp", "opdownload", "aria2"]
