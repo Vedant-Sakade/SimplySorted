@@ -57,6 +57,7 @@ struct ImagesView: View {
                     }
                     .buttonStyle(.pill(.filled))
                     .disabled(files.isEmpty || working)
+                    if files.isEmpty { Hint("Drop or choose some images first.") }
                 }
             }
 

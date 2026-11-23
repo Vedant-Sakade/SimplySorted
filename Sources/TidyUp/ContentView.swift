@@ -74,7 +74,7 @@ struct ContentView: View {
         .padding(.horizontal, 36)
         .padding(.top, 40)
         .foregroundStyle(Theme.ink)
-        .font(.mono(13))
+        .font(.mono(14))
         .tint(Theme.ink)
         .background(Theme.bg.ignoresSafeArea())
         .frame(minWidth: 900, minHeight: 660)
@@ -88,6 +88,9 @@ struct ContentView: View {
                 Text(selection.subtitle).font(.mono(12)).foregroundStyle(Theme.mute)
             }
             Spacer()
+            ThemeSwitch(isDark: Binding(get: { model.appearance == .dark },
+                                        set: { model.setAppearance($0 ? .dark : .light) }))
+                .padding(.top, 6)
             Menu {
                 Button("Quit TidyUp") { NSApp.terminate(nil) }
             } label: {
@@ -126,6 +129,7 @@ struct TabBar: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .help(item.subtitle)
             }
         }
         .overlay(alignment: .bottom) { Rectangle().fill(Theme.ink).frame(height: 1) }

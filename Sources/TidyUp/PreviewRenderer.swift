@@ -11,18 +11,18 @@ enum PreviewRenderer {
         let demo = makeDemoFolder()
         let model = AppModel(previewFolder: demo)
         for scheme in [ColorScheme.light, .dark] {
-            for item in SidebarItem.allCases {
+            for (item, tall) in SidebarItem.allCases.map({ ($0, true) }) + [(SidebarItem.sort, false)] {
                 let view = ContentView(initial: item)
                     .environment(model)
                     .environment(\.colorScheme, scheme)
                     .environment(\.previewMode, true)
-                    .frame(width: 1000, height: item == .sort ? 1250 : 800, alignment: .top)
+                    .frame(width: 1000, height: item == .sort && tall ? 1250 : (item == .sort ? 800 : 800), alignment: .top)
                     .background(Theme.bg)
                 let renderer = ImageRenderer(content: view)
                 renderer.scale = 1.5
                 guard let image = renderer.nsImage, let tiff = image.tiffRepresentation,
                       let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) else { continue }
-                let name = "\(item.rawValue)-\(scheme == .dark ? "dark" : "light").png"
+                let name = "\(item.rawValue)\(tall ? "" : "-top")-\(scheme == .dark ? "dark" : "light").png"
                 try? png.write(to: out.appendingPathComponent(name))
             }
         }

@@ -24,6 +24,7 @@ struct SortView: View {
                             HairlineDivider()
                         }
                     }
+                    Hint("Switch on the folders you want tidied. Downloads and Desktop are the usual ones.")
                     Button {
                         if let url = chooseFolder(prompt: "Add") { model.addFolder(url) }
                     } label: { Label("Add folder", systemImage: "plus") }
@@ -41,28 +42,32 @@ struct SortView: View {
             } right: {
                 Card(title: "Ready to sort", icon: "sparkles") {
                     TickDial(value: "\(model.pendingCount)",
-                             caption: model.pendingCount == 1 ? "file ready" : "files ready",
+                             caption: model.pendingCount == 0 ? "all tidy" : (model.pendingCount == 1 ? "file ready" : "files ready"),
                              detail: model.enabledFolders.map(\.name).joined(separator: " · "),
                              progress: min(Double(model.pendingCount) / 300, 1))
-                        .frame(maxWidth: 300).frame(maxWidth: .infinity)
+                        .frame(width: 260, height: 260).frame(maxWidth: .infinity)
 
-                    Button { model.sortNow() } label: {
-                        Label(model.pendingCount == 0 ? "Nothing to sort" : "Sort now", systemImage: "sparkles")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.pill(.filled))
-                    .disabled(model.pendingCount == 0 || model.isWorking)
-
-                    if let label = model.undoLabel {
-                        Button { model.undo() } label: {
-                            Label(label, systemImage: "arrow.uturn.backward").frame(maxWidth: .infinity)
+                    if model.pendingCount > 0 {
+                        Button { model.sortNow() } label: {
+                            Label(model.isWorking ? "Sorting…" : "Sort now", systemImage: "sparkles").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.pill(.filled))
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(model.isWorking)
+                        Hint("Moves \(model.pendingCount) file\(model.pendingCount == 1 ? "" : "s") into folders like Images, Documents and Archives. Nothing is overwritten, and you can undo it.")
+                    } else {
+                        Hint(model.enabledFolders.isEmpty
+                             ? "Switch on at least one folder on the left to get started."
+                             : "Nothing to sort. Your folders are already tidy.")
+                        Button { model.refresh() } label: {
+                            Label("Check again", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.pill(.outlined))
-                        .disabled(model.isWorking)
                     }
-                    StatusLine(text: model.message)
+
+                    ResultStrip()
                     ForEach(model.planErrors, id: \.self) { error in
-                        StatusLine(text: error + " — allow TidyUp in System Settings > Privacy & Security > Files and Folders.", isError: true)
+                        StatusLine(text: error + " Allow TidyUp in System Settings > Privacy & Security > Files and Folders.", isError: true)
                     }
                 }
             }
@@ -95,23 +100,52 @@ private struct FolderRow: View {
     let folder: WatchedFolder
 
     var body: some View {
-        HStack(spacing: 12) {
-            Toggle("", isOn: Binding(get: { folder.enabled }, set: { _ in model.toggle(folder) }))
-                .toggleStyle(.pill).labelsHidden()
-            Image(systemName: "folder").font(.system(size: 16, weight: .light))
-            VStack(alignment: .leading, spacing: 2) {
-                Text(folder.name).font(.mono(13, .semibold)).lineLimit(1).truncationMode(.middle)
-                Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
-                    .font(.mono(10)).foregroundStyle(Theme.mute).lineLimit(1).truncationMode(.middle)
+        HStack(spacing: 8) {
+            // Clicking anywhere on the folder (switch, name, count) turns it on or off.
+            Toggle(isOn: Binding(get: { folder.enabled }, set: { _ in model.toggle(folder) })) {
+                HStack(spacing: 10) {
+                    Image(systemName: "folder").font(.system(size: 16, weight: .light))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(folder.name).font(.mono(14, .semibold)).lineLimit(1).truncationMode(.middle)
+                        Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                            .font(.mono(11)).foregroundStyle(Theme.mute).lineLimit(1).truncationMode(.middle)
+                    }
+                    Spacer(minLength: 8)
+                    if folder.enabled, let plan = model.plans[folder.path] {
+                        Text("\(plan.moves.count) to sort").font(.mono(12)).foregroundStyle(Theme.mute)
+                    }
+                }
             }
-            Spacer(minLength: 8)
-            if folder.enabled, let plan = model.plans[folder.path] {
-                Text("\(plan.moves.count) to sort").font(.mono(11)).foregroundStyle(Theme.mute)
-            }
+            .toggleStyle(.pill)
             Button { model.removeFolder(folder) } label: { Image(systemName: "xmark") }
-                .buttonStyle(IconButtonStyle(size: 26)).help("Remove from list")
+                .buttonStyle(IconButtonStyle(size: 28)).help("Remove \(folder.name) from this list")
         }
-        .padding(.vertical, 11)
+        .padding(.vertical, 6)
+    }
+}
+
+/// Shows what just happened, with Undo right next to it.
+private struct ResultStrip: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        if let message = model.message {
+            VStack(alignment: .leading, spacing: 10) {
+                Label(message, systemImage: "checkmark.circle").font(.mono(13)).textSelection(.enabled)
+                if let label = model.undoLabel {
+                    Button { model.undo() } label: { Label(label, systemImage: "arrow.uturn.backward") }
+                        .buttonStyle(.pill(.outlined, compact: true))
+                        .disabled(model.isWorking)
+                }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.ink.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.ink.opacity(0.4), lineWidth: 1))
+        } else if let label = model.undoLabel {
+            Button { model.undo() } label: { Label(label, systemImage: "arrow.uturn.backward").frame(maxWidth: .infinity) }
+                .buttonStyle(.pill(.outlined))
+        }
     }
 }
 

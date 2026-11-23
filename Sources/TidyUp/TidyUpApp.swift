@@ -24,6 +24,7 @@ struct TidyUpApp: App {
     var body: some Scene {
         Window("TidyUp", id: "main") {
             ContentView().environment(model)
+                .preferredColorScheme(model.appearance == .dark ? .dark : .light)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1000, height: 720)
@@ -42,6 +43,9 @@ private struct MenuContent: View {
         Button(model.pendingCount == 0 ? "Nothing to sort" : "Sort Now (\(model.pendingCount) files)") { model.sortNow() }
             .disabled(model.pendingCount == 0 || model.isWorking)
         if let label = model.undoLabel { Button(label) { model.undo() } }
+        Button(model.appearance == .dark ? "Switch to Light Mode" : "Switch to Dark Mode") {
+            model.setAppearance(model.appearance.toggled)
+        }
         Button("Capture Text from Screen") { model.captureTextFromScreen() }
         if let message = model.message { Text(message) }
         Divider()

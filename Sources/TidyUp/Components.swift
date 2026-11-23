@@ -62,7 +62,7 @@ struct PillButtonStyle: ButtonStyle {
 
 /// Small round icon-only button.
 struct IconButtonStyle: ButtonStyle {
-    var size: CGFloat = 30
+    var size: CGFloat = 34
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
@@ -89,43 +89,89 @@ extension ButtonStyle where Self == IconButtonStyle {
 
 // MARK: - Toggles
 
-/// Outlined pill switch with the label on its right.
+/// Outlined pill switch. The whole row (switch + label) is one big button, at least 36pt tall.
 struct PillToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 12) {
-            ZStack(alignment: configuration.isOn ? .trailing : .leading) {
-                Capsule().fill(configuration.isOn ? Theme.ink : Color.clear)
-                Capsule().stroke(Theme.ink, lineWidth: 1.2)
-                Circle().fill(configuration.isOn ? Theme.bg : Theme.ink).frame(width: 14, height: 14).padding(3)
+        Button {
+            withAnimation(.easeOut(duration: 0.15)) { configuration.isOn.toggle() }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack(alignment: configuration.isOn ? .trailing : .leading) {
+                    Capsule().fill(configuration.isOn ? Theme.ink : Theme.card)
+                    Capsule().stroke(Theme.ink, lineWidth: 1.4)
+                    Circle().fill(configuration.isOn ? Theme.bg : Theme.ink).frame(width: 18, height: 18).padding(3)
+                }
+                .frame(width: 50, height: 26)
+                configuration.label
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(width: 42, height: 22)
-            .animation(.easeOut(duration: 0.15), value: configuration.isOn)
-            .onTapGesture { configuration.isOn.toggle() }
-            configuration.label
+            .frame(minHeight: 36)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityValue(configuration.isOn ? "on" : "off")
     }
 }
 
-/// Rounded square checkbox with a tick.
+/// Rounded square checkbox. The whole row is one big button.
 struct CheckToggleStyle: ToggleStyle {
     func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 12) {
-            ZStack {
-                RoundedRectangle(cornerRadius: 6).fill(configuration.isOn ? Theme.ink : Color.clear)
-                RoundedRectangle(cornerRadius: 6).stroke(Theme.ink, lineWidth: 1.2)
-                if configuration.isOn {
-                    Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.bg)
+        Button {
+            configuration.isOn.toggle()
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6).fill(configuration.isOn ? Theme.ink : Theme.card)
+                    RoundedRectangle(cornerRadius: 6).stroke(Theme.ink, lineWidth: 1.4)
+                    if configuration.isOn {
+                        Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.bg)
+                    }
                 }
+                .frame(width: 22, height: 22)
+                configuration.label.frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(width: 20, height: 20)
-            .onTapGesture { configuration.isOn.toggle() }
-            configuration.label.frame(maxWidth: .infinity, alignment: .leading)
+            .frame(minHeight: 36)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityValue(configuration.isOn ? "ticked" : "unticked")
     }
 }
 
 extension ToggleStyle where Self == PillToggleStyle { static var pill: PillToggleStyle { PillToggleStyle() } }
 extension ToggleStyle where Self == CheckToggleStyle { static var check: CheckToggleStyle { CheckToggleStyle() } }
+
+// MARK: - Light / dark switch
+
+/// Sun and moon on an outlined pill; the filled knob sits on the active one.
+struct ThemeSwitch: View {
+    @Binding var isDark: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeOut(duration: 0.18)) { isDark.toggle() }
+        } label: {
+            ZStack(alignment: isDark ? .trailing : .leading) {
+                Capsule().stroke(Theme.ink, lineWidth: 1.2)
+                HStack(spacing: 0) {
+                    Image(systemName: "sun.max").frame(width: 38)
+                    Image(systemName: "moon").frame(width: 38)
+                }
+                .font(.system(size: 13))
+                Capsule().fill(Theme.ink)
+                    .frame(width: 34, height: 26)
+                    .overlay(Image(systemName: isDark ? "moon.fill" : "sun.max.fill").font(.system(size: 13)).foregroundStyle(Theme.bg))
+                    .padding(3)
+            }
+            .frame(width: 76, height: 32)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(isDark ? "Switch to light mode" : "Switch to dark mode")
+        .accessibilityLabel(isDark ? "Dark mode on" : "Light mode on")
+    }
+}
 
 // MARK: - Segmented control and dropdown
 
@@ -141,7 +187,7 @@ struct PillSegmented<T: Hashable>: View {
                     Text(options[i].1)
                         .font(.mono(12, .semibold)).textCase(.uppercase).tracking(0.5)
                         .foregroundStyle(selected ? Theme.bg : Theme.ink)
-                        .padding(.horizontal, 16).padding(.vertical, 8)
+                        .padding(.horizontal, 18).padding(.vertical, 10)
                         .background(Capsule().fill(selected ? Theme.ink : Color.clear))
                         .contentShape(Capsule())
                 }
@@ -199,7 +245,7 @@ struct Card<Content: View>: View {
             if let title {
                 HStack(spacing: 8) {
                     if let icon { Image(systemName: icon).font(.system(size: 14, weight: .regular)) }
-                    Text(title).font(.mono(13, .semibold)).textCase(.uppercase).tracking(1)
+                    Text(title).font(.mono(14, .semibold)).textCase(.uppercase).tracking(1)
                     Spacer()
                     Image(systemName: "ellipsis").foregroundStyle(Theme.mute)
                 }
@@ -264,7 +310,7 @@ struct StatusLine: View {
             } icon: {
                 Image(systemName: isError ? "exclamationmark.triangle" : "checkmark.circle")
             }
-            .font(.mono(12))
+            .font(.mono(13))
             .foregroundStyle(isError ? Theme.warn : Theme.mute)
         }
     }
@@ -274,7 +320,7 @@ struct StatusLine: View {
 struct Hint: View {
     var text: String
     init(_ text: String) { self.text = text }
-    var body: some View { Text(text).font(.mono(11)).foregroundStyle(Theme.mute).fixedSize(horizontal: false, vertical: true) }
+    var body: some View { Text(text).font(.mono(12)).foregroundStyle(Theme.mute).fixedSize(horizontal: false, vertical: true) }
 }
 
 /// Thin outlined search / text input.
@@ -305,27 +351,34 @@ struct DropZone: View {
     @State private var targeted = false
 
     var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.system(size: 22, weight: .light))
-                .frame(width: 54, height: 54)
-                .overlay(Circle().stroke(Theme.ink, lineWidth: 1.2))
-            Text(title).font(.mono(13, .semibold)).textCase(.uppercase).tracking(0.8)
-            Text(subtitle).font(.mono(11)).foregroundStyle(Theme.mute).multilineTextAlignment(.center)
-            Button {
-                let urls = chooseFiles(types: types, multiple: multiple)
-                if !urls.isEmpty { onFiles(urls) }
-            } label: { Label("Choose", systemImage: "folder") }
-                .buttonStyle(.pill(.outlined, compact: true))
+        // The whole box is one button: click anywhere to choose, or drop files on it.
+        Button {
+            let urls = chooseFiles(types: types, multiple: multiple)
+            if !urls.isEmpty { onFiles(urls) }
+        } label: {
+            VStack(spacing: 10) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 22, weight: .light))
+                    .frame(width: 54, height: 54)
+                    .overlay(Circle().stroke(Theme.ink, lineWidth: 1.2))
+                Text(title).font(.mono(14, .semibold)).textCase(.uppercase).tracking(0.8)
+                Text(subtitle).font(.mono(12)).foregroundStyle(Theme.mute).multilineTextAlignment(.center)
+                Label("Click to choose", systemImage: "folder")
+                    .font(.mono(11, .semibold)).textCase(.uppercase).tracking(0.6)
+                    .padding(.horizontal, 14).padding(.vertical, 7)
+                    .overlay(Capsule().stroke(Theme.ink, lineWidth: 1.2))
+            }
+            .frame(maxWidth: .infinity, minHeight: 150)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [5, 5]))
+                    .foregroundStyle(targeted ? Theme.ink : Theme.mute)
+                    .background(targeted ? Theme.ink.opacity(0.07) : Color.clear, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
-        .frame(maxWidth: .infinity, minHeight: 150)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [5, 5]))
-                .foregroundStyle(targeted ? Theme.ink : Theme.mute)
-                .background(targeted ? Theme.ink.opacity(0.07) : Color.clear, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        )
+        .buttonStyle(.plain)
         .dropDestination(for: URL.self) { urls, _ in
             let files = urls.filter(\.isFileURL)
             guard !files.isEmpty else { return false }
@@ -436,8 +489,8 @@ struct SettingRow<Control: View>: View {
     @ViewBuilder var control: Control
     var body: some View {
         HStack(spacing: 14) {
-            Text(label).font(.mono(11, .medium)).textCase(.uppercase).tracking(0.6)
-                .foregroundStyle(Theme.mute).frame(width: 84, alignment: .leading)
+            Text(label).font(.mono(12, .medium)).textCase(.uppercase).tracking(0.6)
+                .foregroundStyle(Theme.mute).frame(width: 90, alignment: .leading)
             control
             Spacer(minLength: 0)
         }

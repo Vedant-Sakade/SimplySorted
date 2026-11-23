@@ -13,14 +13,14 @@ One Mac app for tidying up: one-click file sorting plus a few everyday tools.
 
 ## Design
 
-Sage paper background, thin ink outlines, rounded cards, pill buttons and Geist Mono type (SIL Open Font License, bundled in `Resources/Fonts`). Light and dark mode follow macOS. `TidyUp --render-preview <folder>` draws every screen to PNG for checking.
+Sage paper background, thin ink outlines, rounded cards, pill buttons and Geist Mono type (SIL Open Font License, bundled in `Resources/Fonts`). A sun/moon switch in the header picks off-white or dark mode, and the choice is remembered. `TidyUp --render-preview <folder>` draws every screen to PNG for checking.
 
 ## Build
 
 ```bash
 scripts/make_icon.sh   # only after changing the icon
 scripts/build_app.sh --open
-swift test
+swift test      # engine + app-model + real-click control tests
 ```
 
 Requires macOS 14+ and Xcode. The app is ad-hoc signed and runs only on the Mac that built it.

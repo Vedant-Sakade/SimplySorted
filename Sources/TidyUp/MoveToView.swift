@@ -32,6 +32,9 @@ struct MoveToView: View {
                     if model.favorites.isEmpty {
                         Hint("No destinations yet. Add the folders you move files to most, like a client or project folder.")
                     }
+                    if staged.isEmpty && !model.favorites.isEmpty {
+                        Hint("Drop files on the left first, or drop them straight onto a destination below.")
+                    }
                     ForEach(model.favorites, id: \.self) { path in
                         DestinationRow(path: path, staged: $staged)
                     }

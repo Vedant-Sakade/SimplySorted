@@ -54,6 +54,7 @@ private struct MergePane: View {
                     .font(.mono(12))
                     HairlineDivider()
                 }
+                if files.count == 1 { Hint("Add at least one more PDF to merge.") }
                 HStack {
                     Button { merge() } label: { Label("Merge", systemImage: "arrow.triangle.merge") }
                         .buttonStyle(.pill(.filled)).disabled(files.count < 2)
@@ -103,6 +104,7 @@ private struct SplitPane: View {
                     Label("Split", systemImage: "scissors").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.pill(.filled)).disabled(file == nil || (!everyPage && ranges.isEmpty))
+                if file == nil { Hint("Drop a PDF first.") }
                 StatusLine(text: status, isError: !ok)
             }
         }
@@ -150,6 +152,7 @@ private struct CompressPane: View {
                     Label(working ? "Working…" : "Compress", systemImage: "arrow.down.right.and.arrow.up.left").frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.pill(.filled)).disabled(files.isEmpty || working)
+                if files.isEmpty { Hint("Drop one or more PDFs first.") }
                 ForEach(status, id: \.self) { Text($0).font(.mono(11)).foregroundStyle(Theme.mute) }
             }
         }

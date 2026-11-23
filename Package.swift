@@ -14,5 +14,7 @@ let package = Package(
         // The SwiftUI Mac app (window + menu bar item).
         .executableTarget(name: "TidyUp", dependencies: ["TidyCore"]),
         .testTarget(name: "TidyCoreTests", dependencies: ["TidyCore"]),
+        // Drives the real SwiftUI controls and the app model (against temporary folders only).
+        .testTarget(name: "TidyUpTests", dependencies: ["TidyUp", "TidyCore"]),
     ]
 )

@@ -112,3 +112,32 @@ final class ImprovementTests: XCTestCase {
         XCTAssertFalse(exists("Mockups"))
     }
 }
+
+final class AppearanceTests: XCTestCase {
+    func makeDefaults() -> (UserDefaults, String) {
+        let suite = "tidyup-test-\(UUID().uuidString)"
+        return (UserDefaults(suiteName: suite)!, suite)
+    }
+
+    func testStartsLightThenRemembersChoice() {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(AppearanceStore(defaults: defaults).load(), .light, "first launch is the off-white look")
+
+        AppearanceStore(defaults: defaults).save(.dark)
+        // A brand-new store object (like the next app launch) reads the saved choice.
+        XCTAssertEqual(AppearanceStore(defaults: UserDefaults(suiteName: suite)!).load(), .dark)
+
+        AppearanceStore(defaults: defaults).save(.light)
+        XCTAssertEqual(AppearanceStore(defaults: UserDefaults(suiteName: suite)!).load(), .light)
+    }
+
+    func testIgnoresGarbageAndToggles() {
+        let (defaults, suite) = makeDefaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("purple", forKey: "tidyup.appearance")
+        XCTAssertEqual(AppearanceStore(defaults: defaults).load(), .light)
+        XCTAssertEqual(Appearance.light.toggled, .dark)
+        XCTAssertEqual(Appearance.dark.toggled, .light)
+    }
+}

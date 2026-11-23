@@ -24,32 +24,56 @@ final class AppModel {
     var groupFolders = false
     var message: String?
     var isWorking = false
+    var appearance: Appearance = .light
     var loginItemEnabled = false
     var loginItemError: String?
 
-    private var scheduleReference = Date()
+    var scheduleReference = Date()
     private var timer: Timer?
-    private let sorter = Sorter()
-    private let store = RunStore()
-    private let defaults = UserDefaults.standard
+    private let sorter: Sorter
+    private let store: RunStore
+    private let appearanceStore: AppearanceStore
+    private let defaults: UserDefaults
+    private let initialFolders: [WatchedFolder]?
+    /// false in tests and screenshots: no timer, no login-item lookup, no app-wide appearance change.
+    private let live: Bool
 
-    init() {
+    /// - Parameters are only changed by tests; the app uses the defaults (the real settings and folders).
+    init(defaults: UserDefaults = .standard, runStore: RunStore = RunStore(), minimumAge: TimeInterval = 30,
+         initialFolders: [WatchedFolder]? = nil, live: Bool = true) {
+        self.defaults = defaults
+        self.store = runStore
+        self.appearanceStore = AppearanceStore(defaults: defaults)
+        self.sorter = Sorter(minimumAge: minimumAge)
+        self.initialFolders = initialFolders
+        self.live = live
+
+        appearance = appearanceStore.load()
+        applyAppearance()
         load()
         lastRun = store.load()
-        loginItemEnabled = SMAppService.mainApp.status == .enabled
-        refresh()
-        // Checked every minute; a run missed while the Mac slept is caught up on the next tick.
-        timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.checkSchedule() }
+        if live {
+            loginItemEnabled = SMAppService.mainApp.status == .enabled
+            // Every minute: pick up new files for the menu bar count and run a due schedule
+            // (a run missed while the Mac slept is caught up on the next tick).
+            timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+                Task { @MainActor in
+                    self?.refresh()
+                    self?.checkSchedule()
+                }
+            }
+            checkSchedule()
         }
-        checkSchedule()
+        refresh()
     }
 
     /// Screenshot mode: one demo folder, nothing read from or written to the user's real settings.
-    init(previewFolder: URL) {
-        folders = [WatchedFolder(path: previewFolder.path, enabled: true)]
-        let sorter = Sorter(minimumAge: 0)
-        if let plan = try? sorter.plan(folder: previewFolder, groupFolders: false) { plans[previewFolder.path] = plan }
+    convenience init(previewFolder: URL) {
+        self.init(defaults: UserDefaults(suiteName: "tidyup.preview.\(UUID().uuidString)")!,
+                  runStore: RunStore(fileURL: previewFolder.appendingPathComponent(".preview-run.json")),
+                  minimumAge: 0,
+                  initialFolders: [WatchedFolder(path: previewFolder.path, enabled: true)], live: false)
+        if let plan = try? Sorter(minimumAge: 0).plan(folder: previewFolder) { plans[previewFolder.path] = plan }
         message = "Sorted 214 files."
     }
 
@@ -62,6 +86,20 @@ final class AppModel {
         return run.kind == "move" ? "Undo last move" : "Undo last sort"
     }
     var nextScheduledRun: Date? { schedule.enabled ? schedule.nextRun(after: scheduleReference) : nil }
+
+    // MARK: Light / dark
+
+    /// Switches the look, applies it to the whole app (windows, menus, file pickers) and remembers it.
+    func setAppearance(_ new: Appearance) {
+        appearance = new
+        appearanceStore.save(new)
+        applyAppearance()
+    }
+
+    private func applyAppearance() {
+        guard live else { return }
+        NSApplication.shared.appearance = NSAppearance(named: appearance == .dark ? .darkAqua : .aqua)
+    }
 
     // MARK: Folders & preview
 
@@ -191,7 +229,7 @@ final class AppModel {
         save()
     }
 
-    private func checkSchedule() {
+    func checkSchedule() {
         guard schedule.isDue(since: scheduleReference) else { return }
         scheduleReference = Date()
         save()
@@ -219,7 +257,12 @@ final class AppModel {
             process.arguments = ["-i", "-x", file.path]     // -i: drag to choose an area, -x: no sound
             try? process.run()
             process.waitUntilExit()
-            guard FileManager.default.fileExists(atPath: file.path) else { return }   // cancelled with Esc
+            guard FileManager.default.fileExists(atPath: file.path) else {       // cancelled with Esc, or not allowed
+                await MainActor.run {
+                    self.message = "No capture taken. If you did not cancel, allow TidyUp in System Settings > Privacy & Security > Screen Recording."
+                }
+                return
+            }
             do {
                 let text = try TextRecognizer.recognize(imageAt: file)
                 await MainActor.run { [text] in
@@ -260,6 +303,8 @@ final class AppModel {
             favorites = saved.favorites
             scheduleReference = saved.scheduleReference
             groupFolders = saved.groupFolders ?? false
+        } else if let initialFolders {
+            folders = initialFolders
         } else {
             let home = FileManager.default.homeDirectoryForCurrentUser
             folders = [
