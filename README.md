@@ -40,3 +40,7 @@ swift test      # engine + app-model + real-click control tests
 ```
 
 Requires macOS 14+ and Xcode (or its command-line tools).
+
+## Licence
+
+MIT, see [LICENSE](LICENSE). The bundled Geist Mono font keeps its own SIL Open Font License (`Resources/Fonts/OFL.txt`).
