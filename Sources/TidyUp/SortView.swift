@@ -39,11 +39,13 @@ struct SortView: View {
                     }
                     .toggleStyle(.pill)
                 }
+                AutoSortCard()
             } right: {
                 Card(title: "Ready to sort", icon: "sparkles") {
                     TickDial(value: "\(model.pendingCount)",
-                             caption: model.pendingCount == 0 ? "all tidy" : (model.pendingCount == 1 ? "file ready" : "files ready"),
-                             detail: model.enabledFolders.map(\.name).joined(separator: " · "),
+                             caption: model.enabledFolders.isEmpty ? "no folder on"
+                                 : (model.pendingCount == 0 ? "all tidy" : (model.pendingCount == 1 ? "file ready" : "files ready")),
+                             detail: model.enabledFolders.isEmpty ? "switch one on" : model.enabledFolders.map(\.name).joined(separator: " · "),
                              progress: min(Double(model.pendingCount) / 300, 1))
                         .frame(width: 260, height: 260).frame(maxWidth: .infinity)
 

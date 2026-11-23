@@ -237,6 +237,7 @@ final class AppModel {
     }
 
     func setLoginItem(_ on: Bool) {
+        guard live else { return }          // tests and previews never touch the real login items
         do {
             if on { try SMAppService.mainApp.register() } else { try SMAppService.mainApp.unregister() }
             loginItemError = nil

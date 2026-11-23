@@ -165,4 +165,18 @@ final class ControlTests: XCTestCase {
         click(w, x: 180, y: 70)
         XCTAssertEqual(box.taps, 1, "the second page's own picture works too")
     }
+
+    func testAutoSortSwitchOnTheSortTabTurnsTheScheduleOn() {
+        let suite = "tidyup-card-test-\(UUID().uuidString)"
+        defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+        let model = AppModel(defaults: UserDefaults(suiteName: suite)!,
+                             runStore: RunStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("\(suite).json")),
+                             minimumAge: 0, initialFolders: [], live: false)
+        let w = show(AutoSortCard().environment(model), width: 520, height: 520)
+        XCTAssertFalse(model.schedule.enabled)
+        click(w, x: 47, y: 90)                      // on the switch
+        XCTAssertTrue(model.schedule.enabled, "the Auto sort switch must turn the schedule on")
+        click(w, x: 250, y: 90)                     // on the words next to it
+        XCTAssertFalse(model.schedule.enabled, "clicking the words turns it off again")
+    }
 }

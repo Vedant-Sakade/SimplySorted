@@ -1,13 +1,12 @@
 import SwiftUI
 
 enum SidebarItem: String, CaseIterable, Identifiable {
-    case sort, schedule, moveTo, images, pdf, text, uninstall
+    case sort, moveTo, images, pdf, text, uninstall
     var id: String { rawValue }
 
     var title: String {
         switch self {
         case .sort: "Sort"
-        case .schedule: "Schedule"
         case .moveTo: "Move to…"
         case .images: "Images"
         case .pdf: "PDF"
@@ -24,8 +23,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     }
     var subtitle: String {
         switch self {
-        case .sort: "One click puts every loose file into its type folder. Nothing is overwritten, and you can undo."
-        case .schedule: "Sort your folders automatically, without clicking anything."
+        case .sort: "One click puts every loose file into its type folder, or let it run on a schedule. Nothing is overwritten, and you can undo."
         case .moveTo: "Keep favourite folders here. Drop files on one to send them there."
         case .images: "Convert, shrink and resize photos. Originals are never touched."
         case .pdf: "Merge, split or shrink PDFs. Your original files are never changed."
@@ -36,7 +34,6 @@ enum SidebarItem: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .sort: "sparkles"
-        case .schedule: "clock"
         case .moveTo: "folder.badge.plus"
         case .images: "photo"
         case .pdf: "doc.richtext"
@@ -61,7 +58,6 @@ struct ContentView: View {
             Group {
                 switch selection {
                 case .sort: SortView()
-                case .schedule: ScheduleView()
                 case .moveTo: MoveToView()
                 case .images: ImagesView()
                 case .pdf: PDFToolsView()
