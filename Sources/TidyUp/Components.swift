@@ -238,6 +238,8 @@ struct PillPicker<T: Hashable>: View {
 struct Card<Content: View>: View {
     var title: String?
     var icon: String?
+    /// true: the card (outline included) grows to fill the height it is given, so neighbouring cards line up.
+    var fill = false
     @ViewBuilder var content: Content
 
     var body: some View {
@@ -253,21 +255,24 @@ struct Card<Content: View>: View {
             content
         }
         .padding(22)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.card))
         .overlay(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).stroke(Theme.ink.opacity(0.85), lineWidth: 1))
     }
 }
 
 struct TwoColumns<L: View, R: View>: View {
+    /// true: both columns become as tall as the taller one (a flexible card inside stretches to fill).
+    var stretch = false
     @ViewBuilder var left: L
     @ViewBuilder var right: R
 
     var body: some View {
-        HStack(alignment: .top, spacing: 20) {
+        let row = HStack(alignment: .top, spacing: 20) {
             VStack(spacing: 20) { left }.frame(maxWidth: .infinity)
             VStack(spacing: 20) { right }.frame(maxWidth: .infinity)
         }
+        if stretch { row.fixedSize(horizontal: false, vertical: true) } else { row }
     }
 }
 

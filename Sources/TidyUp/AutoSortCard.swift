@@ -16,47 +16,57 @@ struct AutoSortCard: View {
     var body: some View {
         @Bindable var model = model
         Card(title: "Auto sort", icon: "clock") {
-            Toggle(isOn: $model.schedule.enabled) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Sort automatically").font(.mono(14, .semibold))
-                    Hint("Tidies the folders switched on above, on a schedule, without you clicking anything.")
-                }
-            }
-            .toggleStyle(.pill)
-            .padding(.vertical, 4)
+            HStack(alignment: .top, spacing: 28) {
+                // Left: the schedule
+                VStack(alignment: .leading, spacing: 14) {
+                    Toggle(isOn: $model.schedule.enabled) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Sort automatically").font(.mono(14, .semibold))
+                            Hint("Tidies the folders switched on above, on a schedule, without you clicking anything.")
+                        }
+                    }
+                    .toggleStyle(.pill)
 
-            if model.schedule.enabled {
-                HairlineDivider()
-                SettingRow(label: "Repeat") {
-                    PillSegmented(selection: $model.schedule.frequency, options: [(.daily, "Daily"), (.weekly, "Weekly")])
-                }
-                if model.schedule.frequency == .weekly {
-                    SettingRow(label: "On") { PillPicker(selection: $model.schedule.weekday, options: weekdays, minWidth: 130) }
-                }
-                SettingRow(label: "At") {
-                    HStack(spacing: 8) {
-                        PillPicker(selection: $model.schedule.hour, options: hours)
-                        Text(":")
-                        PillPicker(selection: $model.schedule.minute, options: minutes)
+                    if model.schedule.enabled {
+                        HairlineDivider()
+                        SettingRow(label: "Repeat") {
+                            PillSegmented(selection: $model.schedule.frequency, options: [(.daily, "Daily"), (.weekly, "Weekly")])
+                        }
+                        if model.schedule.frequency == .weekly {
+                            SettingRow(label: "On") { PillPicker(selection: $model.schedule.weekday, options: weekdays, minWidth: 130) }
+                        }
+                        SettingRow(label: "At") {
+                            HStack(spacing: 8) {
+                                PillPicker(selection: $model.schedule.hour, options: hours)
+                                Text(":")
+                                PillPicker(selection: $model.schedule.minute, options: minutes)
+                            }
+                        }
+                        if let next = model.nextScheduledRun {
+                            Label("Next sort: \(next.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))", systemImage: "calendar")
+                                .font(.mono(13, .semibold))
+                        }
+                        Hint("If your Mac was asleep or TidyUp was closed at that time, it sorts once when TidyUp is running again.")
                     }
                 }
-                if let next = model.nextScheduledRun {
-                    Label("Next sort: \(next.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))", systemImage: "calendar")
-                        .font(.mono(13, .semibold))
-                }
-                Hint("If your Mac was asleep or TidyUp was closed at that time, it sorts once when TidyUp is running again.")
-            }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
 
-            HairlineDivider()
-            Toggle(isOn: Binding(get: { model.loginItemEnabled }, set: { model.setLoginItem($0) })) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Open TidyUp when I log in").font(.mono(14, .semibold))
-                    Hint("Auto sort only runs while TidyUp is open. It lives in the menu bar, so opening at login keeps it running.")
+                Rectangle().fill(Theme.ink.opacity(0.18)).frame(width: 1)
+
+                // Right: keep it running
+                VStack(alignment: .leading, spacing: 14) {
+                    Toggle(isOn: Binding(get: { model.loginItemEnabled }, set: { model.setLoginItem($0) })) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Open TidyUp when I log in").font(.mono(14, .semibold))
+                            Hint("Auto sort only runs while TidyUp is open. It lives in the menu bar, so opening at login keeps it running.")
+                        }
+                    }
+                    .toggleStyle(.pill)
+                    StatusLine(text: model.loginItemError, isError: true)
                 }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
             }
-            .toggleStyle(.pill)
-            .padding(.vertical, 4)
-            StatusLine(text: model.loginItemError, isError: true)
+            .fixedSize(horizontal: false, vertical: true)
         }
         .onChange(of: model.schedule) { model.scheduleChanged() }
     }

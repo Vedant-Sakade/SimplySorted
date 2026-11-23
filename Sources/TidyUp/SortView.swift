@@ -16,7 +16,7 @@ struct SortView: View {
 
     var body: some View {
         PageScroll {
-            TwoColumns {
+            TwoColumns(stretch: true) {
                 Card(title: "Folders", icon: "folder") {
                     VStack(spacing: 0) {
                         ForEach(model.folders) { folder in
@@ -30,7 +30,7 @@ struct SortView: View {
                     } label: { Label("Add folder", systemImage: "plus") }
                         .buttonStyle(.pill(.outlined, compact: true))
                 }
-                Card(title: "Options", icon: "slider.horizontal.3") {
+                Card(title: "Options", icon: "slider.horizontal.3", fill: true) {
                     Toggle(isOn: Binding(get: { model.groupFolders }, set: { model.setGroupFolders($0) })) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Also group folders").font(.mono(13, .semibold))
@@ -39,9 +39,8 @@ struct SortView: View {
                     }
                     .toggleStyle(.pill)
                 }
-                AutoSortCard()
             } right: {
-                Card(title: "Ready to sort", icon: "sparkles") {
+                Card(title: "Ready to sort", icon: "sparkles", fill: true) {
                     TickDial(value: "\(model.pendingCount)",
                              caption: model.enabledFolders.isEmpty ? "no folder on"
                                  : (model.pendingCount == 0 ? "all tidy" : (model.pendingCount == 1 ? "file ready" : "files ready")),
@@ -61,10 +60,17 @@ struct SortView: View {
                         Hint(model.enabledFolders.isEmpty
                              ? "Switch on at least one folder on the left to get started."
                              : "Nothing to sort. Your folders are already tidy.")
-                        Button { model.refresh() } label: {
-                            Label("Check again", systemImage: "arrow.clockwise").frame(maxWidth: .infinity)
+                    }
+
+                    // Small buttons, side by side.
+                    HStack(spacing: 10) {
+                        Button { model.refresh() } label: { Label("Check again", systemImage: "arrow.clockwise") }
+                            .buttonStyle(.pill(.outlined, compact: true))
+                        if let label = model.undoLabel {
+                            Button { model.undo() } label: { Label(label, systemImage: "arrow.uturn.backward") }
+                                .buttonStyle(.pill(.outlined, compact: true))
+                                .disabled(model.isWorking)
                         }
-                        .buttonStyle(.pill(.outlined))
                     }
 
                     ResultStrip()
@@ -73,6 +79,8 @@ struct SortView: View {
                     }
                 }
             }
+
+            AutoSortCard()
 
             if model.pendingCount > 0 {
                 Card(title: "Preview by type", icon: "chart.bar") {
@@ -126,27 +134,17 @@ private struct FolderRow: View {
     }
 }
 
-/// Shows what just happened, with Undo right next to it.
+/// Shows what just happened.
 private struct ResultStrip: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
         if let message = model.message {
-            VStack(alignment: .leading, spacing: 10) {
-                Label(message, systemImage: "checkmark.circle").font(.mono(13)).textSelection(.enabled)
-                if let label = model.undoLabel {
-                    Button { model.undo() } label: { Label(label, systemImage: "arrow.uturn.backward") }
-                        .buttonStyle(.pill(.outlined, compact: true))
-                        .disabled(model.isWorking)
-                }
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.ink.opacity(0.06)))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.ink.opacity(0.4), lineWidth: 1))
-        } else if let label = model.undoLabel {
-            Button { model.undo() } label: { Label(label, systemImage: "arrow.uturn.backward").frame(maxWidth: .infinity) }
-                .buttonStyle(.pill(.outlined))
+            Label(message, systemImage: "checkmark.circle").font(.mono(13)).textSelection(.enabled)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.ink.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.ink.opacity(0.4), lineWidth: 1))
         }
     }
 }

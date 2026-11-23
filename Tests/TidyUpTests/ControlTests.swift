@@ -172,7 +172,7 @@ final class ControlTests: XCTestCase {
         let model = AppModel(defaults: UserDefaults(suiteName: suite)!,
                              runStore: RunStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("\(suite).json")),
                              minimumAge: 0, initialFolders: [], live: false)
-        let w = show(AutoSortCard().environment(model), width: 520, height: 520)
+        let w = show(AutoSortCard().environment(model), width: 900, height: 520)
         XCTAssertFalse(model.schedule.enabled)
         click(w, x: 47, y: 90)                      // on the switch
         XCTAssertTrue(model.schedule.enabled, "the Auto sort switch must turn the schedule on")
