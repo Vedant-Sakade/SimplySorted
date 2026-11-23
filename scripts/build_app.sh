@@ -1,11 +1,12 @@
 #!/bin/bash
-# Builds build/TidyUp.app (ad-hoc signed, runs only on this Mac).
+# Builds build/TidyUp.app: a universal app (Apple Silicon + Intel), ad-hoc signed.
 # Usage: scripts/build_app.sh [--open]
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-swift build -c release
-BIN="$(swift build -c release --show-bin-path)/TidyUp"
+ARCHS="--arch arm64 --arch x86_64"
+swift build -c release $ARCHS
+BIN="$(swift build -c release $ARCHS --show-bin-path)/TidyUp"
 
 APP="build/TidyUp.app"
 rm -rf "$APP"                       # the old build is removed before every new one
@@ -27,7 +28,7 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key><string>TidyUp</string>
     <key>CFBundleDisplayName</key><string>TidyUp</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>0.1.0</string>
+    <key>CFBundleShortVersionString</key><string>1.0.0</string>
     <key>CFBundleVersion</key><string>1</string>
     <key>LSMinimumSystemVersion</key><string>14.0</string>
     <key>NSHighResolutionCapable</key><true/>
