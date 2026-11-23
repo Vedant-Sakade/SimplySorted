@@ -1,0 +1,239 @@
+import XCTest
+import AppKit
+import PDFKit
+@testable import TidyCore
+
+final class ToolsTests: XCTestCase {
+    var dir: URL!
+
+    override func setUpWithError() throws {
+        dir = FileManager.default.temporaryDirectory.appendingPathComponent("tidy-tools-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: dir)
+    }
+
+    // MARK: helpers
+
+    func makePNG(_ name: String, size: CGSize = CGSize(width: 800, height: 400), text: String? = nil, transparent: Bool = false) throws -> URL {
+        let image = NSImage(size: size)
+        image.lockFocus()
+        if !transparent {
+            NSColor.white.setFill(); NSRect(origin: .zero, size: size).fill()
+        }
+        NSColor(red: 0.9, green: 0.2, blue: 0.2, alpha: 1).setFill()
+        NSRect(x: 10, y: 10, width: 100, height: 100).fill()
+        if let text {
+            (text as NSString).draw(at: NSPoint(x: 40, y: size.height / 2),
+                                    withAttributes: [.font: NSFont.systemFont(ofSize: 60), .foregroundColor: NSColor.black])
+        }
+        image.unlockFocus()
+        let rep = NSBitmapImageRep(data: image.tiffRepresentation!)!
+        let url = dir.appendingPathComponent(name)
+        try rep.representation(using: .png, properties: [:])!.write(to: url)
+        return url
+    }
+
+    func makePDF(_ name: String, pages: Int) throws -> URL {
+        let doc = PDFDocument()
+        for i in 0..<pages {
+            let image = NSImage(size: NSSize(width: 300, height: 400))
+            image.lockFocus()
+            NSColor.white.setFill(); NSRect(x: 0, y: 0, width: 300, height: 400).fill()
+            ("Page \(i + 1)" as NSString).draw(at: NSPoint(x: 20, y: 200), withAttributes: [.font: NSFont.systemFont(ofSize: 40)])
+            image.unlockFocus()
+            doc.insert(PDFPage(image: image)!, at: i)
+        }
+        let url = dir.appendingPathComponent(name)
+        XCTAssertTrue(doc.write(to: url))
+        return url
+    }
+
+    func pixelSize(_ url: URL) -> (Int, Int) {
+        let src = CGImageSourceCreateWithURL(url as CFURL, nil)!
+        let p = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as! [CFString: Any]
+        return (p[kCGImagePropertyPixelWidth] as! Int, p[kCGImagePropertyPixelHeight] as! Int)
+    }
+
+    // MARK: Schedule
+
+    func testScheduleDailyDueAfterTime() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        func date(_ d: Int, _ h: Int, _ m: Int) -> Date { cal.date(from: DateComponents(year: 2026, month: 11, day: d, hour: h, minute: m))! }
+        var s = Schedule(); s.enabled = true; s.hour = 18; s.minute = 0
+        XCTAssertEqual(s.nextRun(after: date(23, 10, 0), calendar: cal), date(23, 18, 0))
+        XCTAssertFalse(s.isDue(since: date(23, 10, 0), now: date(23, 17, 59), calendar: cal))
+        XCTAssertTrue(s.isDue(since: date(23, 10, 0), now: date(23, 18, 1), calendar: cal))
+        // missed for days -> still due once
+        XCTAssertTrue(s.isDue(since: date(20, 19, 0), now: date(23, 9, 0), calendar: cal))
+        s.enabled = false
+        XCTAssertFalse(s.isDue(since: date(20, 19, 0), now: date(23, 19, 0), calendar: cal))
+    }
+
+    func testScheduleWeekly() {
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = TimeZone(identifier: "UTC")!
+        var s = Schedule(); s.enabled = true; s.frequency = .weekly; s.weekday = 2; s.hour = 9   // Monday 09:00
+        let monday = cal.date(from: DateComponents(year: 2026, month: 11, day: 23, hour: 10))!   // 23 Nov 2026 is a Monday
+        let next = s.nextRun(after: monday, calendar: cal)!
+        XCTAssertEqual(cal.component(.weekday, from: next), 2)
+        XCTAssertEqual(cal.component(.day, from: next), 30)
+    }
+
+    // MARK: Move to
+
+    func testMoveToFolderAndUndo() throws {
+        let a = dir.appendingPathComponent("a.txt"); try Data("a".utf8).write(to: a)
+        let dest = dir.appendingPathComponent("Dest"); try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: dest.appendingPathComponent("a.txt"))
+        let sorter = Sorter(minimumAge: 0)
+        let run = sorter.move([a], to: dest)
+        XCTAssertEqual(run.moved.count, 1)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: dest.appendingPathComponent("a 2.txt").path))
+        XCTAssertEqual(try String(contentsOf: dest.appendingPathComponent("a.txt")), "old")
+        _ = sorter.undo(run)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: a.path))
+    }
+
+    func testCannotMoveFolderIntoItself() throws {
+        let inner = dir.appendingPathComponent("Parent/Child"); try FileManager.default.createDirectory(at: inner, withIntermediateDirectories: true)
+        let run = Sorter().move([dir.appendingPathComponent("Parent")], to: inner)
+        XCTAssertTrue(run.moved.isEmpty)
+        XCTAssertEqual(run.failures.count, 1)
+    }
+
+    // MARK: Images
+
+    func testConvertPNGToJPEGFlattensTransparency() throws {
+        let png = try makePNG("t.png", transparent: true)
+        let r = try ImageTools.convert(png, options: ImageOptions(format: .jpeg, quality: 0.7))
+        XCTAssertEqual(r.output.pathExtension, "jpg")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: r.output.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: png.path), "original must stay")
+        XCTAssertGreaterThan(r.outputBytes, 0)
+    }
+
+    func testResizeNeverEnlarges() throws {
+        let png = try makePNG("big.png", size: CGSize(width: 800, height: 400))
+        let small = try ImageTools.convert(png, options: ImageOptions(format: .png, maxDimension: 200))
+        XCTAssertEqual(pixelSize(small.output).0, 200)
+        let same = try ImageTools.convert(png, options: ImageOptions(format: .png, maxDimension: 99999))
+        XCTAssertEqual(pixelSize(same.output).0, pixelSize(png).0, "an image smaller than the limit must keep its size")
+    }
+
+    func testRecompressSameFormatDoesNotOverwriteOriginal() throws {
+        let png = try makePNG("p.png")
+        let jpg = try ImageTools.convert(png, options: ImageOptions(format: .jpeg)).output
+        let again = try ImageTools.convert(jpg, options: ImageOptions(format: .jpeg, quality: 0.3))
+        XCTAssertNotEqual(again.output, jpg)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: jpg.path))
+    }
+
+    func testHEICWritesIfSupported() throws {
+        let png = try makePNG("h.png")
+        do {
+            let r = try ImageTools.convert(png, options: ImageOptions(format: .heic, quality: 0.6))
+            XCTAssertTrue(FileManager.default.fileExists(atPath: r.output.path))
+        } catch ImageToolsError.unsupported {
+            throw XCTSkip("HEIC writing unavailable here")
+        }
+    }
+
+    func testUnreadableFileThrows() throws {
+        let bad = dir.appendingPathComponent("bad.png"); try Data("not an image".utf8).write(to: bad)
+        XCTAssertThrowsError(try ImageTools.convert(bad, options: ImageOptions()))
+    }
+
+    // MARK: PDF
+
+    func testParseRanges() throws {
+        XCTAssertEqual(try PDFTools.parseRanges("1-3, 5", pageCount: 6), [1...3, 5...5])
+        XCTAssertThrowsError(try PDFTools.parseRanges("0-2", pageCount: 6))
+        XCTAssertThrowsError(try PDFTools.parseRanges("2-9", pageCount: 6))
+        XCTAssertThrowsError(try PDFTools.parseRanges("a", pageCount: 6))
+        XCTAssertThrowsError(try PDFTools.parseRanges("3-2", pageCount: 6))
+        XCTAssertThrowsError(try PDFTools.parseRanges("", pageCount: 6))
+    }
+
+    func testMergeAndSplit() throws {
+        let a = try makePDF("a.pdf", pages: 2), b = try makePDF("b.pdf", pages: 3)
+        let merged = dir.appendingPathComponent("m.pdf")
+        try PDFTools.merge([a, b], to: merged)
+        XCTAssertEqual(PDFTools.pageCount(of: merged), 5)
+        XCTAssertThrowsError(try PDFTools.merge([a], to: dir.appendingPathComponent("x.pdf")))
+
+        let every = try PDFTools.split(merged, mode: .everyPage, into: dir.appendingPathComponent("every"))
+        XCTAssertEqual(every.count, 5)
+        let ranges = try PDFTools.split(merged, mode: .ranges([1...2, 5...5]), into: dir.appendingPathComponent("ranges"))
+        XCTAssertEqual(ranges.map { PDFTools.pageCount(of: $0) }, [2, 1])
+    }
+
+    func testCompressOnlySavesWhenSmaller() throws {
+        // A noisy full-colour page compresses well as JPEG at low DPI.
+        let doc = PDFDocument()
+        let size = NSSize(width: 600, height: 800)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        for _ in 0..<400 {
+            NSColor(red: .random(in: 0...1), green: .random(in: 0...1), blue: .random(in: 0...1), alpha: 1).setFill()
+            NSRect(x: .random(in: 0...550), y: .random(in: 0...750), width: 50, height: 50).fill()
+        }
+        image.unlockFocus()
+        doc.insert(PDFPage(image: image)!, at: 0)
+        let src = dir.appendingPathComponent("noisy.pdf"); XCTAssertTrue(doc.write(to: src))
+        let out = dir.appendingPathComponent("noisy-small.pdf")
+        let r = try PDFTools.compress(src, quality: 0.4, dpi: 72, to: out)
+        if r.output != nil {
+            XCTAssertLessThan(r.after, r.before)
+            XCTAssertEqual(PDFTools.pageCount(of: out), 1)
+        } else {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: out.path))
+        }
+    }
+
+    // MARK: OCR
+
+    func testRecognizesText() throws {
+        let png = try makePNG("text.png", size: CGSize(width: 900, height: 300), text: "Hello TidyUp 2026")
+        let text = try TextRecognizer.recognize(imageAt: png)
+        XCTAssertTrue(text.lowercased().contains("hello"), "got: \(text)")
+        XCTAssertTrue(text.contains("2026"), "got: \(text)")
+    }
+
+    // MARK: Uninstaller
+
+    func testFindsLeftoversByBundleID() throws {
+        let fm = FileManager.default
+        let appURL = dir.appendingPathComponent("Apps/Fancy.app/Contents")
+        try fm.createDirectory(at: appURL, withIntermediateDirectories: true)
+        let plist: [String: Any] = ["CFBundleIdentifier": "com.test.fancy", "CFBundleName": "Fancy", "CFBundleExecutable": "Fancy"]
+        try (plist as NSDictionary).write(to: appURL.appendingPathComponent("Info.plist"))
+
+        let lib = dir.appendingPathComponent("Library")
+        for p in ["Caches/com.test.fancy", "Preferences/com.test.fancy.plist", "Application Support/Fancy",
+                  "Group Containers/ABCDE12345.com.test.fancy", "Caches/com.test.fancybar", "Caches/Unrelated", "Saved Application State/com.test.fancy.savedState"] {
+            let url = lib.appendingPathComponent(p)
+            try fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            fm.createFile(atPath: url.path, contents: Data("x".utf8))
+        }
+
+        let apps = AppUninstaller.installedApps(in: [dir.appendingPathComponent("Apps")])
+        XCTAssertEqual(apps.map(\.bundleID), ["com.test.fancy"])
+        let left = AppUninstaller.findLeftovers(for: apps[0], library: lib)
+        let names = Set(left.map { $0.url.lastPathComponent })
+        XCTAssertTrue(names.contains("com.test.fancy"))
+        XCTAssertTrue(names.contains("com.test.fancy.plist"))
+        XCTAssertTrue(names.contains("ABCDE12345.com.test.fancy"))
+        XCTAssertTrue(names.contains("com.test.fancy.savedState"))
+        XCTAssertFalse(names.contains("com.test.fancybar"), "different app sharing a prefix must not match")
+        XCTAssertFalse(names.contains("Unrelated"))
+        XCTAssertEqual(left.first { $0.url.lastPathComponent == "Fancy" }?.confident, false, "name-only match is flagged")
+        XCTAssertEqual(left.first { $0.url.lastPathComponent == "com.test.fancy" }?.confident, true)
+    }
+
+    func testAppleAppsAreProtected() {
+        XCTAssertTrue(InstalledApp(url: URL(fileURLWithPath: "/Applications/Safari.app"), name: "Safari", bundleID: "com.apple.Safari").isProtected)
+        XCTAssertFalse(InstalledApp(url: URL(fileURLWithPath: "/Applications/X.app"), name: "X", bundleID: "com.x.y").isProtected)
+    }
+}
