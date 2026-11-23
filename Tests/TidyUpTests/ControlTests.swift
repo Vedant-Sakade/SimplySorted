@@ -179,4 +179,15 @@ final class ControlTests: XCTestCase {
         click(w, x: 250, y: 90)                     // on the words next to it
         XCTAssertFalse(model.schedule.enabled, "clicking the words turns it off again")
     }
+
+    func testEveryPageHeaderHasTheSameHeightSoTabsNeverJump() {
+        for width in [760.0, 900.0, 1000.0, 1400.0] {
+            var heights: [String: CGFloat] = [:]
+            for item in SidebarItem.allCases {
+                let host = NSHostingView(rootView: PageHeader(item: item, isDark: .constant(false)).frame(width: width))
+                heights[item.rawValue] = host.fittingSize.height
+            }
+            XCTAssertEqual(Set(heights.values).count, 1, "header heights differ at width \(width): \(heights)")
+        }
+    }
 }

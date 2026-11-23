@@ -78,15 +78,25 @@ struct ContentView: View {
     }
 
     private var header: some View {
+        PageHeader(item: selection, isDark: Binding(get: { model.appearance == .dark },
+                                                    set: { model.setAppearance($0 ? .dark : .light) }))
+    }
+}
+
+/// Title, one-or-two-line subtitle and the light/dark switch. Its height is the same on every page,
+/// so the tab bar below never jumps when you change tabs.
+struct PageHeader: View {
+    var item: SidebarItem
+    @Binding var isDark: Bool
+
+    var body: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(selection.title).font(.mono(40, .regular)).lineLimit(1)
-                Text(selection.subtitle).font(.mono(12)).foregroundStyle(Theme.mute)
+                Text(item.title).font(.mono(40, .regular)).lineLimit(1)
+                Text(item.subtitle).font(.mono(12)).foregroundStyle(Theme.mute).lineLimit(2)
+                    .frame(maxWidth: .infinity, minHeight: 34, maxHeight: 34, alignment: .topLeading)   // always room for two lines
             }
-            Spacer()
-            ThemeSwitch(isDark: Binding(get: { model.appearance == .dark },
-                                        set: { model.setAppearance($0 ? .dark : .light) }))
-                .padding(.top, 6)
+            ThemeSwitch(isDark: $isDark).padding(.top, 6)
         }
         .padding(.bottom, 22)
     }
