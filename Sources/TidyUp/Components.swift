@@ -234,7 +234,7 @@ struct PillPicker<T: Hashable>: View {
 
 // MARK: - Cards and layout
 
-/// Big rounded outlined panel with an uppercase title and "…" like the reference.
+/// Big rounded outlined panel with an icon and an uppercase title.
 struct Card<Content: View>: View {
     var title: String?
     var icon: String?
@@ -249,7 +249,6 @@ struct Card<Content: View>: View {
                     if let icon { Image(systemName: icon).font(.system(size: 14, weight: .regular)) }
                     Text(title).font(.mono(14, .semibold)).textCase(.uppercase).tracking(1)
                     Spacer()
-                    Image(systemName: "ellipsis").foregroundStyle(Theme.mute)
                 }
             }
             content
