@@ -11,38 +11,58 @@ struct UninstallerView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(spacing: 0) {
-                TextField("Search apps", text: $search).textFieldStyle(.roundedBorder).padding(10)
-                List(shown, selection: $selected) { app in
-                    HStack {
-                        AppIcon(url: app.url)
-                        Text(app.name).lineLimit(1)
+        HStack(alignment: .top, spacing: 20) {
+            Card(title: "Apps", icon: "square.grid.2x2") {
+                PillField(placeholder: "Search apps", text: $search, icon: "magnifyingglass")
+                AdaptiveScroll {
+                    LazyVStack(spacing: 4) {
+                        ForEach(shown) { app in
+                            let isSelected = selected == app
+                            Button { selected = app } label: {
+                                HStack(spacing: 10) {
+                                    AppIcon(url: app.url)
+                                    Text(app.name).font(.mono(12, isSelected ? .semibold : .regular)).lineLimit(1)
+                                    Spacer()
+                                    if app.isProtected { Image(systemName: "lock").font(.system(size: 10)).foregroundStyle(Theme.mute) }
+                                }
+                                .padding(.horizontal, 10).padding(.vertical, 7)
+                                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(isSelected ? Theme.ink.opacity(0.1) : Color.clear))
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink.opacity(isSelected ? 0.9 : 0), lineWidth: 1))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        }
                     }
-                    .tag(app)
                 }
+                .frame(maxHeight: .infinity)
             }
-            .frame(width: 240)
-            Divider()
-            if let app = selected {
-                AppDetail(app: app, onRemoved: { selected = nil; apps = AppUninstaller.installedApps() }).id(app.id)
-            } else {
-                VStack(spacing: 8) {
-                    Image(systemName: "trash").font(.system(size: 36)).foregroundStyle(.tertiary)
-                    Text("Pick an app to remove it and the files it left behind").foregroundStyle(.secondary)
-                    Text("Everything goes to the Trash first, so you can still get it back.").font(.caption).foregroundStyle(.tertiary)
+            .frame(width: 290)
+
+            Card(title: "Remove", icon: "trash") {
+                if let app = selected {
+                    AppDetail(app: app, onRemoved: { selected = nil; apps = AppUninstaller.installedApps() }).id(app.id)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "trash").font(.system(size: 30, weight: .light)).frame(width: 70, height: 70)
+                            .overlay(Circle().stroke(Theme.ink, lineWidth: 1.2))
+                        Text("Pick an app").font(.mono(13, .semibold)).textCase(.uppercase)
+                        Hint("You will see the app and the files it left behind. Everything goes to the Trash, so you can get it back.")
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        .padding(.top, 22).padding(.bottom, 28)
         .onAppear { if apps.isEmpty { apps = AppUninstaller.installedApps() } }
     }
 }
 
 private struct AppIcon: View {
     let url: URL
+    var size: CGFloat = 22
     var body: some View {
-        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: 22, height: 22)
+        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path)).resizable().frame(width: size, height: size)
     }
 }
 
@@ -64,32 +84,44 @@ private struct AppDetail: View {
     private var chosenSize: Int64 { chosen.reduce(0) { $0 + (sizes[$1] ?? 0) } }
 
     var body: some View {
-        SectionPage(title: app.name, subtitle: app.bundleID) {
-            if app.isProtected {
-                Label("This is a macOS or protected app and can’t be removed here.", systemImage: "lock.fill").foregroundStyle(.secondary)
-            } else {
-                if isRunning {
-                    Label("\(app.name) is running. Quit it first, then come back.", systemImage: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 14) {
+                AppIcon(url: app.url, size: 44)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(app.name).font(.mono(20, .medium)).lineLimit(1)
+                    Text(app.bundleID).font(.mono(11)).foregroundStyle(Theme.mute)
                 }
-                if loading { ProgressView("Looking for leftover files…") }
-                else {
-                    row(app.url, place: "The app", confident: true)
-                    if leftovers.isEmpty { Text("No leftover files found.").foregroundStyle(.secondary) }
-                    ForEach(leftovers) { row($0.url, place: $0.place, confident: $0.confident) }
+            }
+            if app.isProtected {
+                StatusLine(text: "This is a macOS or protected app and can’t be removed here.", isError: true)
+            } else {
+                if isRunning { StatusLine(text: "\(app.name) is running. Quit it first, then come back.", isError: true) }
+                if loading {
+                    Label("Looking for leftover files…", systemImage: "hourglass").font(.mono(12)).foregroundStyle(Theme.mute)
+                } else {
+                    AdaptiveScroll {
+                        VStack(spacing: 0) {
+                            row(app.url, place: "The app", confident: true)
+                            if leftovers.isEmpty { Hint("No leftover files found.").padding(.vertical, 10) }
+                            ForEach(leftovers) { row($0.url, place: $0.place, confident: $0.confident) }
+                        }
+                    }
+                    .frame(maxHeight: .infinity)
                     if leftovers.contains(where: { !$0.confident }) {
-                        Text("Items marked “name match” were found by name only. They are unticked — check them before including.")
-                            .font(.caption).foregroundStyle(.secondary)
+                        Hint("“Name match” items were found by name only. They start unticked — check them before including.")
                     }
                 }
-                HStack {
-                    Button("Move to Trash…") { confirm = true }
-                        .buttonStyle(.borderedProminent).controlSize(.large)
+                HStack(spacing: 14) {
+                    Button { confirm = true } label: { Label("Move to Trash", systemImage: "trash") }
+                        .buttonStyle(.pill(.filled))
                         .disabled(chosen.isEmpty || isRunning || loading)
-                    Text("\(chosen.count) item\(chosen.count == 1 ? "" : "s") · \(formatBytes(chosenSize))").foregroundStyle(.secondary)
+                    Text("\(chosen.count) item\(chosen.count == 1 ? "" : "s") · \(formatBytes(chosenSize))")
+                        .font(.mono(12)).foregroundStyle(Theme.mute)
                 }
                 StatusLine(text: result)
             }
         }
+        .frame(maxHeight: .infinity, alignment: .top)
         .task { await load() }
         .confirmationDialog("Move \(chosen.count) item\(chosen.count == 1 ? "" : "s") to the Trash?", isPresented: $confirm) {
             Button("Move to Trash", role: .destructive) { remove() }
@@ -99,15 +131,20 @@ private struct AppDetail: View {
     }
 
     private func row(_ url: URL, place: String, confident: Bool) -> some View {
-        Toggle(isOn: Binding(get: { chosen.contains(url) }, set: { on in if on { chosen.insert(url) } else { chosen.remove(url) } })) {
-            HStack {
-                VStack(alignment: .leading) {
-                    Text(url.lastPathComponent)
-                    Text(place + (confident ? "" : " · name match")).font(.caption).foregroundStyle(confident ? Color.secondary : Color.orange)
+        VStack(spacing: 0) {
+            Toggle(isOn: Binding(get: { chosen.contains(url) }, set: { on in if on { chosen.insert(url) } else { chosen.remove(url) } })) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(url.lastPathComponent).font(.mono(12, .medium)).lineLimit(1)
+                        Text(place + (confident ? "" : " · name match")).font(.mono(10)).foregroundStyle(confident ? Theme.mute : Theme.warn)
+                    }
+                    Spacer()
+                    Text(formatBytes(sizes[url] ?? 0)).font(.mono(11)).foregroundStyle(Theme.mute)
                 }
-                Spacer()
-                Text(formatBytes(sizes[url] ?? 0)).foregroundStyle(.secondary).monospacedDigit()
             }
+            .toggleStyle(.check)
+            .padding(.vertical, 9)
+            HairlineDivider()
         }
     }
 

@@ -6,37 +6,45 @@ struct MoveToView: View {
     @State private var staged: [URL] = []
 
     var body: some View {
-        SectionPage(title: "Move to…", subtitle: "Keep your favourite folders here. Drop files on one to send them there in a single step.") {
-            DropZone(title: "Drop files or folders to move", subtitle: "Then pick a destination below — or drop straight onto a destination.",
-                     systemImage: "tray.and.arrow.down") { staged.append(contentsOf: $0) }
-
-            if !staged.isEmpty {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("\(staged.count) ready to move").font(.headline)
-                        Spacer()
-                        Button("Clear") { staged = [] }
+        PageScroll {
+            TwoColumns {
+                Card(title: "Files to move", icon: "tray.and.arrow.down") {
+                    DropZone(title: "Drop files or folders", subtitle: "Then pick a destination — or drop straight onto one.",
+                             systemImage: "tray.and.arrow.down") { staged.append(contentsOf: $0) }
+                    if !staged.isEmpty {
+                        HStack {
+                            Text("\(staged.count) ready").font(.mono(12, .semibold)).textCase(.uppercase)
+                            Spacer()
+                            Button { staged = [] } label: { Label("Clear", systemImage: "xmark") }
+                                .buttonStyle(.pill(.outlined, compact: true))
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(staged.prefix(12), id: \.self) {
+                                Label($0.lastPathComponent, systemImage: $0.hasDirectoryPath ? "folder" : "doc")
+                                    .font(.mono(11)).foregroundStyle(Theme.mute).lineLimit(1)
+                            }
+                            if staged.count > 12 { Hint("and \(staged.count - 12) more") }
+                        }
                     }
-                    ForEach(staged, id: \.self) { Text($0.lastPathComponent).font(.callout).foregroundStyle(.secondary).lineLimit(1) }
                 }
-            }
-
-            HStack {
-                Text("Destinations").font(.title3.bold())
-                Spacer()
-                Button("Add Destination…") { if let url = chooseFolder(prompt: "Add") { model.addFavorite(url) } }
-            }
-
-            if model.favorites.isEmpty {
-                Text("No destinations yet. Add the folders you move files to most, like a client or project folder.")
-                    .foregroundStyle(.secondary)
-            }
-            ForEach(model.favorites, id: \.self) { path in
-                DestinationRow(path: path, staged: $staged)
-            }
-            StatusLine(text: model.message)
-            if let label = model.undoLabel {
-                Button(label) { model.undo() }
+            } right: {
+                Card(title: "Destinations", icon: "folder.badge.plus") {
+                    if model.favorites.isEmpty {
+                        Hint("No destinations yet. Add the folders you move files to most, like a client or project folder.")
+                    }
+                    ForEach(model.favorites, id: \.self) { path in
+                        DestinationRow(path: path, staged: $staged)
+                    }
+                    Button {
+                        if let url = chooseFolder(prompt: "Add") { model.addFavorite(url) }
+                    } label: { Label("Add destination", systemImage: "plus") }
+                        .buttonStyle(.pill(.outlined, compact: true))
+                    StatusLine(text: model.message)
+                    if let label = model.undoLabel {
+                        Button { model.undo() } label: { Label(label, systemImage: "arrow.uturn.backward") }
+                            .buttonStyle(.pill(.outlined, compact: true))
+                    }
+                }
             }
         }
     }
@@ -52,23 +60,27 @@ private struct DestinationRow: View {
     private var exists: Bool { FileManager.default.fileExists(atPath: path) }
 
     var body: some View {
-        HStack {
-            Image(systemName: exists ? "folder.fill" : "folder.badge.questionmark").foregroundStyle(exists ? .blue : .orange)
-            VStack(alignment: .leading) {
-                Text(url.lastPathComponent)
-                Text(path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).font(.caption).foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            Image(systemName: exists ? "folder" : "questionmark.folder").font(.system(size: 18, weight: .light))
+                .foregroundStyle(exists ? Theme.ink : Theme.warn)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(url.lastPathComponent).font(.mono(13, .semibold)).lineLimit(1)
+                Text(path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                    .font(.mono(10)).foregroundStyle(Theme.mute).lineLimit(1).truncationMode(.middle)
             }
-            Spacer()
-            Button("Move \(staged.isEmpty ? "" : "\(staged.count) here")") {
+            Spacer(minLength: 8)
+            Button {
                 model.move(staged, to: url)
                 staged = []
-            }
-            .disabled(staged.isEmpty || !exists)
-            Button { model.removeFavorite(path) } label: { Image(systemName: "xmark.circle") }
-                .buttonStyle(.plain).foregroundStyle(.tertiary)
+            } label: { Label(staged.isEmpty ? "Move" : "Move \(staged.count)", systemImage: "arrow.right") }
+                .buttonStyle(.pill(.filled, compact: true))
+                .disabled(staged.isEmpty || !exists)
+            Button { model.removeFavorite(path) } label: { Image(systemName: "xmark") }
+                .buttonStyle(IconButtonStyle(size: 26))
         }
-        .padding(10)
-        .background(targeted ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(targeted ? Theme.ink.opacity(0.08) : Color.clear))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(Theme.ink.opacity(targeted ? 1 : 0.5), lineWidth: 1))
         .dropDestination(for: URL.self) { urls, _ in
             let files = urls.filter(\.isFileURL)
             guard exists, !files.isEmpty else { return false }

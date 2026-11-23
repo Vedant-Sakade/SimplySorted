@@ -3,56 +3,86 @@ import TidyCore
 
 struct SortView: View {
     @Environment(AppModel.self) private var model
+    @State private var filter = "all"
+
+    private var shownMoves: [PlannedMove] {
+        model.enabledFolders.compactMap { folder in
+            (filter == "all" || filter == folder.path) ? model.plans[folder.path] : nil
+        }.flatMap(\.moves)
+    }
+    private var counts: [Category: Int] {
+        Dictionary(shownMoves.map { ($0.category, 1) }, uniquingKeysWith: +)
+    }
 
     var body: some View {
-        SectionPage(title: "Sort", subtitle: "One click puts every loose file into its type folder. Nothing is overwritten, and you can undo.") {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(model.folders) { folder in
-                    FolderRow(folder: folder)
-                    Divider()
+        PageScroll {
+            TwoColumns {
+                Card(title: "Folders", icon: "folder") {
+                    VStack(spacing: 0) {
+                        ForEach(model.folders) { folder in
+                            FolderRow(folder: folder)
+                            HairlineDivider()
+                        }
+                    }
+                    Button {
+                        if let url = chooseFolder(prompt: "Add") { model.addFolder(url) }
+                    } label: { Label("Add folder", systemImage: "plus") }
+                        .buttonStyle(.pill(.outlined, compact: true))
                 }
-            }
-            .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+                Card(title: "Options", icon: "slider.horizontal.3") {
+                    Toggle(isOn: Binding(get: { model.groupFolders }, set: { model.setGroupFolders($0) })) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Also group folders").font(.mono(13, .semibold))
+                            Hint("Font-family folders go into Fonts, mockup folders into Mockups. Other folders stay put.")
+                        }
+                    }
+                    .toggleStyle(.pill)
+                }
+            } right: {
+                Card(title: "Ready to sort", icon: "sparkles") {
+                    TickDial(value: "\(model.pendingCount)",
+                             caption: model.pendingCount == 1 ? "file ready" : "files ready",
+                             detail: model.enabledFolders.map(\.name).joined(separator: " · "),
+                             progress: min(Double(model.pendingCount) / 300, 1))
+                        .frame(maxWidth: 300).frame(maxWidth: .infinity)
 
-            Toggle(isOn: Binding(get: { model.groupFolders }, set: { model.setGroupFolders($0) })) {
-                VStack(alignment: .leading) {
-                    Text("Also group folders")
-                    Text("Moves font-family folders into Fonts and mockup folders into Mockups. Other folders stay where they are.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
+                    Button { model.sortNow() } label: {
+                        Label(model.pendingCount == 0 ? "Nothing to sort" : "Sort now", systemImage: "sparkles")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.pill(.filled))
+                    .disabled(model.pendingCount == 0 || model.isWorking)
 
-            HStack {
-                Button("Add Folder…") {
-                    if let url = chooseFolder(prompt: "Add") { model.addFolder(url) }
+                    if let label = model.undoLabel {
+                        Button { model.undo() } label: {
+                            Label(label, systemImage: "arrow.uturn.backward").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.pill(.outlined))
+                        .disabled(model.isWorking)
+                    }
+                    StatusLine(text: model.message)
+                    ForEach(model.planErrors, id: \.self) { error in
+                        StatusLine(text: error + " — allow TidyUp in System Settings > Privacy & Security > Files and Folders.", isError: true)
+                    }
                 }
-                Spacer()
-                if let label = model.undoLabel {
-                    Button(label) { model.undo() }.disabled(model.isWorking)
-                }
-                Button {
-                    model.sortNow()
-                } label: {
-                    Label(model.pendingCount == 0 ? "Nothing to sort" : "Sort Now (\(model.pendingCount))", systemImage: "sparkles")
-                        .padding(.horizontal, 8)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(model.pendingCount == 0 || model.isWorking)
-            }
-
-            StatusLine(text: model.message)
-            ForEach(model.planErrors, id: \.self) { error in
-                Label(error + " — allow TidyUp access in System Settings > Privacy & Security > Files and Folders.", systemImage: "exclamationmark.triangle")
-                    .font(.callout).foregroundStyle(.orange)
             }
 
             if model.pendingCount > 0 {
-                Text("Preview").font(.title3.bold()).padding(.top, 4)
-                ForEach(model.enabledFolders) { folder in
-                    if let plan = model.plans[folder.path], !plan.moves.isEmpty {
-                        PreviewGroup(folder: folder, plan: plan)
+                Card(title: "Preview by type", icon: "chart.bar") {
+                    PillPicker(selection: $filter,
+                               options: [("all", "All folders")] + model.enabledFolders.map { ($0.path, $0.name) })
+                    TwoColumns {
+                        ThinBars(items: Category.allCases.filter { counts[$0] != nil }
+                            .map { .init(id: $0.rawValue, label: $0.short, value: counts[$0] ?? 0) })
+                    } right: {
+                        VStack(spacing: 0) {
+                            ForEach(Category.allCases.filter { counts[$0] != nil }, id: \.self) { category in
+                                TypeRow(category: category, moves: shownMoves.filter { $0.category == category })
+                            }
+                        }
                     }
+                    let skipped = model.enabledFolders.reduce(0) { $0 + (model.plans[$1.path]?.skipped ?? 0) }
+                    if skipped > 0 { Hint("\(skipped) item\(skipped == 1 ? "" : "s") left alone (folders, hidden files, unfinished downloads).") }
                 }
             }
         }
@@ -65,50 +95,55 @@ private struct FolderRow: View {
     let folder: WatchedFolder
 
     var body: some View {
-        HStack {
-            Toggle("", isOn: Binding(get: { folder.enabled }, set: { _ in model.toggle(folder) })).labelsHidden()
-            Image(systemName: "folder.fill").foregroundStyle(.blue)
-            VStack(alignment: .leading) {
-                Text(folder.name)
-                Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")).font(.caption).foregroundStyle(.secondary)
+        HStack(spacing: 12) {
+            Toggle("", isOn: Binding(get: { folder.enabled }, set: { _ in model.toggle(folder) }))
+                .toggleStyle(.pill).labelsHidden()
+            Image(systemName: "folder").font(.system(size: 16, weight: .light))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(folder.name).font(.mono(13, .semibold)).lineLimit(1).truncationMode(.middle)
+                Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                    .font(.mono(10)).foregroundStyle(Theme.mute).lineLimit(1).truncationMode(.middle)
             }
-            Spacer()
+            Spacer(minLength: 8)
             if folder.enabled, let plan = model.plans[folder.path] {
-                Text("\(plan.moves.count) to sort").foregroundStyle(.secondary)
+                Text("\(plan.moves.count) to sort").font(.mono(11)).foregroundStyle(Theme.mute)
             }
-            Button { model.removeFolder(folder) } label: { Image(systemName: "xmark.circle") }
-                .buttonStyle(.plain).foregroundStyle(.tertiary).help("Remove from list")
+            Button { model.removeFolder(folder) } label: { Image(systemName: "xmark") }
+                .buttonStyle(IconButtonStyle(size: 26)).help("Remove from list")
         }
-        .padding(.horizontal, 12).padding(.vertical, 8)
+        .padding(.vertical, 11)
     }
 }
 
-private struct PreviewGroup: View {
-    let folder: WatchedFolder
-    let plan: SortPlan
+private struct TypeRow: View {
+    let category: Category
+    let moves: [PlannedMove]
+    @State private var open = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(folder.name).font(.headline)
-            ForEach(Category.allCases.filter { plan.counts[$0] != nil }, id: \.self) { category in
-                DisclosureGroup {
-                    VStack(alignment: .leading, spacing: 2) {
-                        ForEach(plan.moves.filter { $0.category == category }, id: \.self) { move in
-                            Label(move.source.lastPathComponent, systemImage: move.source.hasDirectoryPath ? "folder" : "doc").font(.callout).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                    }
-                    .padding(.leading, 4)
-                } label: {
-                    Text("\(category.rawValue)  ·  \(plan.counts[category] ?? 0)")
+            Button { withAnimation(.easeOut(duration: 0.15)) { open.toggle() } } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: category.symbol).font(.system(size: 14, weight: .light)).frame(width: 20)
+                    Text(category.rawValue).font(.mono(12, .semibold)).textCase(.uppercase).tracking(0.5)
+                    Spacer()
+                    Text("\(moves.count)").font(.mono(12))
+                    Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(Theme.mute)
                 }
+                .contentShape(Rectangle())
             }
-            if plan.skipped > 0 {
-                Text("\(plan.skipped) item\(plan.skipped == 1 ? "" : "s") left alone (folders, hidden files, unfinished downloads).")
-                    .font(.caption).foregroundStyle(.tertiary)
+            .buttonStyle(.plain)
+            if open {
+                VStack(alignment: .leading, spacing: 3) {
+                    ForEach(moves.prefix(40), id: \.self) { move in
+                        Text(move.source.lastPathComponent).font(.mono(11)).foregroundStyle(Theme.mute).lineLimit(1)
+                    }
+                    if moves.count > 40 { Hint("and \(moves.count - 40) more") }
+                }
+                .padding(.leading, 30)
             }
+            HairlineDivider().padding(.top, 4)
         }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+        .padding(.top, 8)
     }
 }

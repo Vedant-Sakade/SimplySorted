@@ -10,40 +10,43 @@ struct TextFromImageView: View {
     @State private var error: String?
 
     var body: some View {
-        SectionPage(title: "Text from Screen", subtitle: "Copy the text out of any screenshot, photo or picture. Runs on your Mac — nothing is uploaded.") {
-            HStack {
-                Button {
-                    model.captureTextFromScreen { text = $0 }
-                } label: {
-                    Label("Capture Screen Area", systemImage: "viewfinder").padding(.horizontal, 6)
-                }
-                .buttonStyle(.borderedProminent).controlSize(.large)
-                Text("Drag over the text you want. It is copied to your clipboard.").font(.callout).foregroundStyle(.secondary)
-            }
-
-            DropZone(title: "Or drop an image", subtitle: "Screenshot, scan or photo of a page", systemImage: "text.viewfinder", types: [.image], multiple: false) { files in
-                if let file = files.first { read(file) }
-            }
-
-            if working { ProgressView("Reading…") }
-            if let error { Text(error).foregroundStyle(.orange).font(.callout) }
-
-            if !text.isEmpty {
-                HStack {
-                    Text("Result").font(.title3.bold())
-                    Spacer()
-                    Button("Copy") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(text, forType: .string)
-                        model.message = "Copied."
+        PageScroll {
+            TwoColumns {
+                Card(title: "Capture", icon: "viewfinder") {
+                    Button { model.captureTextFromScreen { text = $0 } } label: {
+                        Label("Capture screen area", systemImage: "viewfinder").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.pill(.filled))
+                    Hint("Drag over the text you want. It is copied to your clipboard and shown here.")
+                    HairlineDivider()
+                    DropZone(title: "Or drop an image", subtitle: "Screenshot, scan or photo of a page",
+                             systemImage: "text.viewfinder", types: [.image], multiple: false) { files in
+                        if let file = files.first { read(file) }
                     }
                 }
-                TextEditor(text: $text)
-                    .font(.body).frame(minHeight: 180)
-                    .scrollContentBackground(.hidden)
-                    .padding(8).background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 10))
+            } right: {
+                Card(title: "Result", icon: "text.alignleft") {
+                    if working { Label("Reading…", systemImage: "hourglass").font(.mono(12)).foregroundStyle(Theme.mute) }
+                    StatusLine(text: error, isError: true)
+                    if text.isEmpty && !working && error == nil {
+                        Hint("The text from your picture will appear here.")
+                    }
+                    if !text.isEmpty {
+                        TextEditor(text: $text)
+                            .font(.mono(12)).scrollContentBackground(.hidden)
+                            .frame(minHeight: 220)
+                            .padding(10)
+                            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.ink.opacity(0.5), lineWidth: 1))
+                        Button {
+                            NSPasteboard.general.clearContents()
+                            NSPasteboard.general.setString(text, forType: .string)
+                            model.message = "Copied."
+                        } label: { Label("Copy", systemImage: "doc.on.doc") }
+                            .buttonStyle(.pill(.outlined, compact: true))
+                    }
+                    StatusLine(text: model.message)
+                }
             }
-            StatusLine(text: model.message)
         }
     }
 

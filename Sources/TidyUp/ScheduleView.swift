@@ -4,54 +4,64 @@ import TidyCore
 struct ScheduleView: View {
     @Environment(AppModel.self) private var model
 
+    private var hours: [(Int, String)] { (0..<24).map { ($0, String(format: "%02d", $0)) } }
+    private var minutes: [(Int, String)] {
+        var values = Array(stride(from: 0, to: 60, by: 5))
+        if !values.contains(model.schedule.minute) { values.append(model.schedule.minute); values.sort() }
+        return values.map { ($0, String(format: "%02d", $0)) }
+    }
+    private var weekdays: [(Int, String)] { (1...7).map { ($0, Calendar.current.weekdaySymbols[$0 - 1]) } }
+
     var body: some View {
         @Bindable var model = model
-        SectionPage(title: "Schedule", subtitle: "Sort your folders automatically, without clicking anything.") {
-            Toggle("Sort automatically", isOn: $model.schedule.enabled).toggleStyle(.switch)
+        PageScroll {
+            TwoColumns {
+                Card(title: "Auto sort", icon: "clock") {
+                    Toggle(isOn: $model.schedule.enabled) { Text("Sort automatically").font(.mono(13, .semibold)) }
+                        .toggleStyle(.pill)
 
-            if model.schedule.enabled {
-                Picker("Repeat", selection: $model.schedule.frequency) {
-                    Text("Every day").tag(Schedule.Frequency.daily)
-                    Text("Every week").tag(Schedule.Frequency.weekly)
-                }
-                .pickerStyle(.segmented).frame(maxWidth: 280)
-
-                if model.schedule.frequency == .weekly {
-                    Picker("On", selection: $model.schedule.weekday) {
-                        ForEach(1...7, id: \.self) { day in Text(Calendar.current.weekdaySymbols[day - 1]).tag(day) }
+                    if model.schedule.enabled {
+                        HairlineDivider()
+                        SettingRow(label: "Repeat") {
+                            PillSegmented(selection: $model.schedule.frequency,
+                                          options: [(.daily, "Daily"), (.weekly, "Weekly")])
+                        }
+                        if model.schedule.frequency == .weekly {
+                            SettingRow(label: "On") { PillPicker(selection: $model.schedule.weekday, options: weekdays, minWidth: 130) }
+                        }
+                        SettingRow(label: "At") {
+                            HStack(spacing: 8) {
+                                PillPicker(selection: $model.schedule.hour, options: hours)
+                                Text(":")
+                                PillPicker(selection: $model.schedule.minute, options: minutes)
+                            }
+                        }
+                        Hint("It sorts the folders switched on in the Sort tab. If your Mac was asleep or TidyUp was closed at that time, it sorts once when TidyUp is running again.")
                     }
-                    .frame(maxWidth: 280)
                 }
-
-                DatePicker("At", selection: timeBinding, displayedComponents: .hourAndMinute).frame(maxWidth: 280)
-
-                if let next = model.nextScheduledRun {
-                    Label("Next sort: \(next.formatted(date: .complete, time: .shortened))", systemImage: "clock")
-                        .foregroundStyle(.secondary)
+            } right: {
+                Card(title: "Next sort", icon: "calendar") {
+                    if let next = model.nextScheduledRun {
+                        Text(next.formatted(.dateTime.weekday(.wide).day().month(.wide)))
+                            .font(.mono(22))
+                        Text(next.formatted(date: .omitted, time: .shortened))
+                            .font(.mono(40))
+                    } else {
+                        Text("Off").font(.mono(40))
+                        Hint("Switch on Auto sort to pick a time.")
+                    }
+                    StatusLine(text: model.message)
                 }
-                Text("It sorts the folders ticked on the Sort page. If your Mac was asleep or TidyUp was closed at that time, it sorts once the next time TidyUp is running.")
-                    .font(.callout).foregroundStyle(.secondary)
+                Card(title: "At login", icon: "power") {
+                    Toggle(isOn: Binding(get: { model.loginItemEnabled }, set: { model.setLoginItem($0) })) {
+                        Text("Open TidyUp when I log in").font(.mono(13, .semibold))
+                    }
+                    .toggleStyle(.pill)
+                    Hint("Schedules only run while TidyUp is open. It lives in the menu bar, so opening at login keeps them running.")
+                    StatusLine(text: model.loginItemError, isError: true)
+                }
             }
-
-            Divider()
-            Toggle("Open TidyUp when I log in", isOn: Binding(get: { model.loginItemEnabled }, set: { model.setLoginItem($0) }))
-            Text("Schedules only run while TidyUp is open. It lives in the menu bar, so opening at login keeps them running.")
-                .font(.callout).foregroundStyle(.secondary)
-            if let error = model.loginItemError {
-                Text(error).font(.callout).foregroundStyle(.orange)
-            }
-            StatusLine(text: model.message)
         }
         .onChange(of: model.schedule) { model.scheduleChanged() }
-    }
-
-    private var timeBinding: Binding<Date> {
-        Binding {
-            Calendar.current.date(from: DateComponents(hour: model.schedule.hour, minute: model.schedule.minute)) ?? Date()
-        } set: { date in
-            let parts = Calendar.current.dateComponents([.hour, .minute], from: date)
-            model.schedule.hour = parts.hour ?? 18
-            model.schedule.minute = parts.minute ?? 0
-        }
     }
 }

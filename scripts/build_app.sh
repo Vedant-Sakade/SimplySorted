@@ -12,6 +12,9 @@ rm -rf "$APP"                       # the old build is removed before every new 
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/TidyUp"
 [ -f Resources/AppIcon.icns ] && cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
+# Geist Mono (SIL Open Font License) travels inside the app.
+mkdir -p "$APP/Contents/Resources/Fonts"
+cp Resources/Fonts/* "$APP/Contents/Resources/Fonts/"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>

@@ -11,6 +11,10 @@ One Mac app for tidying up: one-click file sorting plus a few everyday tools.
 - **Text from Screen**: copy text out of any screenshot (on-device OCR)
 - **Uninstall Apps**: remove an app and its leftovers to the Trash
 
+## Design
+
+Sage paper background, thin ink outlines, rounded cards, pill buttons and Geist Mono type (SIL Open Font License, bundled in `Resources/Fonts`). Light and dark mode follow macOS. `TidyUp --render-preview <folder>` draws every screen to PNG for checking.
+
 ## Build
 
 ```bash

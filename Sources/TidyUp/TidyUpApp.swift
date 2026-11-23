@@ -4,7 +4,12 @@ import AppKit
 @main
 enum Launcher {
     static func main() {
+        Fonts.register()
         let args = CommandLine.arguments
+        if let i = args.firstIndex(of: "--render-preview"), i + 1 < args.count {
+            MainActor.assumeIsolated { PreviewRenderer.render(to: args[i + 1]) }
+            return
+        }
         if let i = args.firstIndex(of: "--render-icon"), i + 1 < args.count {
             MainActor.assumeIsolated { IconRenderer.render(to: args[i + 1]) }
             return
@@ -20,7 +25,8 @@ struct TidyUpApp: App {
         Window("TidyUp", id: "main") {
             ContentView().environment(model)
         }
-        .defaultSize(width: 960, height: 640)
+        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: 1000, height: 720)
 
         MenuBarExtra("TidyUp", systemImage: "sparkles") {
             MenuContent().environment(model)

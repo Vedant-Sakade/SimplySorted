@@ -45,6 +45,14 @@ final class AppModel {
         checkSchedule()
     }
 
+    /// Screenshot mode: one demo folder, nothing read from or written to the user's real settings.
+    init(previewFolder: URL) {
+        folders = [WatchedFolder(path: previewFolder.path, enabled: true)]
+        let sorter = Sorter(minimumAge: 0)
+        if let plan = try? sorter.plan(folder: previewFolder, groupFolders: false) { plans[previewFolder.path] = plan }
+        message = "Sorted 214 files."
+    }
+
     // MARK: Derived
 
     var enabledFolders: [WatchedFolder] { folders.filter(\.enabled) }
