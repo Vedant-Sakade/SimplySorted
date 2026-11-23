@@ -91,12 +91,6 @@ struct ContentView: View {
             ThemeSwitch(isDark: Binding(get: { model.appearance == .dark },
                                         set: { model.setAppearance($0 ? .dark : .light) }))
                 .padding(.top, 6)
-            Menu {
-                Button("Quit TidyUp") { NSApp.terminate(nil) }
-            } label: {
-                Image(systemName: "line.3.horizontal").font(.system(size: 22, weight: .light)).frame(width: 40, height: 40)
-            }
-            .menuStyle(.button).menuIndicator(.hidden).buttonStyle(.plain)
         }
         .padding(.bottom, 22)
     }
