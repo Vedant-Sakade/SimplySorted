@@ -83,6 +83,16 @@ final class ControlTests: XCTestCase {
         }
     }
 
+    struct ThumbView: View {
+        @ObservedObject var box: Box
+        var body: some View {
+            HStack(spacing: 16) {
+                ThumbCell(number: 1, image: nil, selected: box.on) { box.on.toggle() }.frame(width: 110)
+                ThumbCell(number: 2, image: nil, selected: false) { box.taps += 1 }.frame(width: 110)
+            }
+        }
+    }
+
     // MARK: tests
 
     func testToggleReactsToClickOnSwitch() {
@@ -142,5 +152,17 @@ final class ControlTests: XCTestCase {
         XCTAssertEqual(box.taps, 1, "pill button")
         click(w, x: 16, y: 74)
         XCTAssertEqual(box.taps, 11, "round icon button")
+    }
+
+    func testPageThumbnailsCanBePickedByClicking() {
+        let box = Box()
+        let w = show(ThumbView(box: box), width: 260, height: 200)
+        click(w, x: 55, y: 70)      // middle of page 1's picture
+        XCTAssertTrue(box.on, "clicking a page picture marks it")
+        click(w, x: 55, y: 70)
+        XCTAssertFalse(box.on, "clicking again unmarks it")
+        click(w, x: 55, y: 180)     // on the page number under the picture
+        click(w, x: 180, y: 70)
+        XCTAssertEqual(box.taps, 1, "the second page's own picture works too")
     }
 }

@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import PDFKit
 
 /// Draws every screen to PNG files without opening a window (used to check the design).
 /// Run: TidyUp.app/Contents/MacOS/TidyUp --render-preview <folder>
@@ -26,7 +27,39 @@ enum PreviewRenderer {
                 try? png.write(to: out.appendingPathComponent(name))
             }
         }
+        renderDeletePages(model: model, to: out)
         try? FileManager.default.removeItem(at: demo)
+    }
+
+    /// The Delete pages tab with a 7-page PDF open and pages 2 and 5 picked.
+    private static func renderDeletePages(model: AppModel, to out: URL) {
+        let doc = PDFDocument()
+        for i in 0..<7 {
+            let size = NSSize(width: 300, height: 400)
+            let image = NSImage(size: size)
+            image.lockFocus()
+            NSColor.white.setFill(); NSRect(origin: .zero, size: size).fill()
+            NSColor.black.setFill(); NSRect(x: 30, y: 300, width: 200, height: 12).fill(); NSRect(x: 30, y: 270, width: 240, height: 6).fill()
+            ("Page \(i + 1)" as NSString).draw(at: NSPoint(x: 30, y: 180), withAttributes: [.font: NSFont.systemFont(ofSize: 40)])
+            image.unlockFocus()
+            doc.insert(PDFPage(image: image)!, at: i)
+        }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("Quarterly report.pdf")
+        doc.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        for scheme in [ColorScheme.light, .dark] {
+            let view = VStack(alignment: .leading, spacing: 20) { DeletePane(previewFile: file) }
+                .padding(36)
+                .font(.mono(14)).foregroundStyle(Theme.ink)
+                .environment(model).environment(\.colorScheme, scheme).environment(\.previewMode, true)
+                .frame(width: 1000, height: 760, alignment: .top)
+                .background(Theme.bg)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 1.5
+            if let tiff = renderer.nsImage?.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                try? png.write(to: out.appendingPathComponent("delete-\(scheme == .dark ? "dark" : "light").png"))
+            }
+        }
     }
 
     private static func makeDemoFolder() -> URL {

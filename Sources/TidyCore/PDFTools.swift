@@ -55,6 +55,46 @@ public enum PDFTools {
         guard merged.write(to: output) else { throw PDFToolsError.cannotWrite(output.lastPathComponent) }
     }
 
+    // MARK: Delete pages
+
+    /// "1-3, 5" -> {1,2,3,5}. Pages are 1-based and must exist.
+    public static func pageSet(from text: String, pageCount: Int) throws -> Set<Int> {
+        try parseRanges(text, pageCount: pageCount).reduce(into: Set<Int>()) { $0.formUnion($1) }
+    }
+
+    /// {1,2,3,5} -> "1-3, 5"
+    public static func formatRanges(_ pages: Set<Int>) -> String {
+        var parts: [String] = []
+        var start: Int?, previous = 0
+        func close() {
+            guard let first = start else { return }
+            parts.append(first == previous ? "\(first)" : "\(first)-\(previous)")
+        }
+        for page in pages.sorted() {
+            if let _ = start, page == previous + 1 { previous = page; continue }
+            close()
+            start = page; previous = page
+        }
+        close()
+        return parts.joined(separator: ", ")
+    }
+
+    /// Saves a copy of the PDF without the given pages (1-based). The original is untouched, and at least one page must stay.
+    /// - Returns: how many pages the new file has.
+    @discardableResult
+    public static func deletePages(from url: URL, pages: Set<Int>, to output: URL) throws -> Int {
+        let doc = try open(url)
+        let count = doc.pageCount
+        guard !pages.isEmpty else { throw PDFToolsError.nothingToDo("Pick at least one page to delete.") }
+        if let bad = pages.first(where: { $0 < 1 || $0 > count }) {
+            throw PDFToolsError.badRange("\(bad) (this PDF has \(count) pages)")
+        }
+        guard pages.count < count else { throw PDFToolsError.nothingToDo("That would delete every page. Keep at least one.") }
+        for page in pages.sorted(by: >) { doc.removePage(at: page - 1) }   // highest first so numbers stay valid
+        guard doc.write(to: output) else { throw PDFToolsError.cannotWrite(output.lastPathComponent) }
+        return doc.pageCount
+    }
+
     // MARK: Split
 
     /// Turns "1-3, 5, 8-10" into 1-based ranges, checked against the page count.

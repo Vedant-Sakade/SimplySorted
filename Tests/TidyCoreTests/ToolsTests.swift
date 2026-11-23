@@ -184,6 +184,9 @@ final class ToolsTests: XCTestCase {
         let src = dir.appendingPathComponent("noisy.pdf"); XCTAssertTrue(doc.write(to: src))
         let out = dir.appendingPathComponent("noisy-small.pdf")
         let r = try PDFTools.compress(src, quality: 0.4, dpi: 72, to: out)
+        // The slider now goes up to 100%: that must work and never write a bigger file.
+        let best = try PDFTools.compress(src, quality: 1.0, dpi: 200, to: dir.appendingPathComponent("best.pdf"))
+        if best.output != nil { XCTAssertLessThan(best.after, best.before) }
         if r.output != nil {
             XCTAssertLessThan(r.after, r.before)
             XCTAssertEqual(PDFTools.pageCount(of: out), 1)
@@ -235,5 +238,71 @@ final class ToolsTests: XCTestCase {
     func testAppleAppsAreProtected() {
         XCTAssertTrue(InstalledApp(url: URL(fileURLWithPath: "/Applications/Safari.app"), name: "Safari", bundleID: "com.apple.Safari").isProtected)
         XCTAssertFalse(InstalledApp(url: URL(fileURLWithPath: "/Applications/X.app"), name: "X", bundleID: "com.x.y").isProtected)
+    }
+}
+
+final class DeletePagesTests: XCTestCase {
+    var dir: URL!
+    let fm = FileManager.default
+
+    override func setUpWithError() throws {
+        dir = fm.temporaryDirectory.appendingPathComponent("tidy-del-\(UUID().uuidString)")
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    }
+    override func tearDownWithError() throws { try? fm.removeItem(at: dir) }
+
+    /// A PDF whose pages are different sizes, so each page can be told apart by its width.
+    func makePDF(pages: Int) throws -> URL {
+        let doc = PDFDocument()
+        for i in 0..<pages {
+            let size = NSSize(width: 100 + i * 10, height: 150)
+            let image = NSImage(size: size)
+            image.lockFocus(); NSColor.white.setFill(); NSRect(origin: .zero, size: size).fill(); image.unlockFocus()
+            doc.insert(PDFPage(image: image)!, at: i)
+        }
+        let url = dir.appendingPathComponent("src.pdf")
+        XCTAssertTrue(doc.write(to: url))
+        return url
+    }
+
+    func widths(_ url: URL) -> [Int] {
+        let doc = PDFDocument(url: url)!
+        return (0..<doc.pageCount).map { Int(doc.page(at: $0)!.bounds(for: .mediaBox).width) }
+    }
+
+    func testDeletesTheRightPagesAndKeepsTheOriginal() throws {
+        let src = try makePDF(pages: 5)                        // widths 100,110,120,130,140
+        let out = dir.appendingPathComponent("out.pdf")
+        let remaining = try PDFTools.deletePages(from: src, pages: [2, 4], to: out)
+        XCTAssertEqual(remaining, 3)
+        XCTAssertEqual(widths(out), [100, 120, 140], "pages 2 and 4 are gone, the order is kept")
+        XCTAssertEqual(PDFTools.pageCount(of: src), 5, "the original keeps all its pages")
+    }
+
+    func testDeletesFirstAndLastPage() throws {
+        let src = try makePDF(pages: 4)
+        let out = dir.appendingPathComponent("out.pdf")
+        try PDFTools.deletePages(from: src, pages: [1, 4], to: out)
+        XCTAssertEqual(widths(out), [110, 120])
+    }
+
+    func testRefusesBadRequests() throws {
+        let src = try makePDF(pages: 3)
+        let out = dir.appendingPathComponent("out.pdf")
+        XCTAssertThrowsError(try PDFTools.deletePages(from: src, pages: [], to: out), "nothing picked")
+        XCTAssertThrowsError(try PDFTools.deletePages(from: src, pages: [4], to: out), "page does not exist")
+        XCTAssertThrowsError(try PDFTools.deletePages(from: src, pages: [0], to: out), "page 0 does not exist")
+        XCTAssertThrowsError(try PDFTools.deletePages(from: src, pages: [1, 2, 3], to: out), "would remove everything")
+        XCTAssertFalse(fm.fileExists(atPath: out.path), "no file is written when the request is refused")
+    }
+
+    func testPageSetAndFormatting() throws {
+        XCTAssertEqual(try PDFTools.pageSet(from: "2, 4-5", pageCount: 6), [2, 4, 5])
+        XCTAssertEqual(try PDFTools.pageSet(from: "1-3, 2-4", pageCount: 6), [1, 2, 3, 4], "overlaps merge")
+        XCTAssertThrowsError(try PDFTools.pageSet(from: "7", pageCount: 6))
+        XCTAssertEqual(PDFTools.formatRanges([1, 2, 3, 5]), "1-3, 5")
+        XCTAssertEqual(PDFTools.formatRanges([4]), "4")
+        XCTAssertEqual(PDFTools.formatRanges([]), "")
+        XCTAssertEqual(PDFTools.formatRanges([9, 2, 3, 7, 8]), "2-3, 7-9")
     }
 }

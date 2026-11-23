@@ -36,7 +36,7 @@ struct ImagesView: View {
                     if format.usesQuality {
                         SettingRow(label: "Quality") {
                             Slider(value: $quality, in: 0.2...1).tint(Theme.ink).frame(maxWidth: 190)
-                            Text("\(Int(quality * 100))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
+                            Text("\(Int((quality * 100).rounded()))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
                         }
                     }
                     SettingRow(label: "Size") { PillPicker(selection: $maxSize, options: sizes, minWidth: 150) }

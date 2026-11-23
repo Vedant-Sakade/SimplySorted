@@ -1,20 +1,22 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import PDFKit
 import TidyCore
 
 struct PDFToolsView: View {
-    enum Mode: String, Hashable { case merge, split, compress }
+    enum Mode: String, Hashable { case merge, split, delete, compress }
     @State private var mode: Mode = .merge
 
     var body: some View {
         PageScroll {
             HStack {
-                PillSegmented(selection: $mode, options: [(.merge, "Merge"), (.split, "Split"), (.compress, "Compress")])
+                PillSegmented(selection: $mode, options: [(.merge, "Merge"), (.split, "Split"), (.delete, "Delete pages"), (.compress, "Compress")])
                 Spacer()
             }
             switch mode {
             case .merge: MergePane()
             case .split: SplitPane()
+            case .delete: DeletePane()
             case .compress: CompressPane()
             }
         }
@@ -141,13 +143,16 @@ private struct CompressPane: View {
         } right: {
             Card(title: "Settings", icon: "slider.horizontal.3") {
                 SettingRow(label: "Quality") {
-                    Slider(value: $quality, in: 0.2...0.9).tint(Theme.ink).frame(maxWidth: 190)
-                    Text("\(Int(quality * 100))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
+                    Slider(value: $quality, in: 0.2...1).tint(Theme.ink).frame(maxWidth: 190)
+                    Text("\(Int((quality * 100).rounded()))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
                 }
                 SettingRow(label: "Detail") {
                     PillPicker(selection: $dpi, options: [(96.0, "Screen · 96 dpi"), (144.0, "Good · 144 dpi"), (200.0, "Print · 200 dpi")], minWidth: 150)
                 }
                 Hint("Pages are turned into images, so text can no longer be selected or searched. A file that would not get smaller is left alone.")
+                if quality >= 0.9 || dpi >= 200 {
+                    Hint("High quality keeps pages sharp but the file may not shrink much. If it can’t get smaller, it is left as it is.")
+                }
                 Button { compress() } label: {
                     Label(working ? "Working…" : "Compress", systemImage: "arrow.down.right.and.arrow.up.left").frame(maxWidth: .infinity)
                 }
@@ -174,5 +179,168 @@ private struct CompressPane: View {
             }
             await MainActor.run { [lines] in status = lines; working = false }
         }
+    }
+}
+
+
+// MARK: - Delete pages
+
+/// One page picture. Click to mark it for deletion. (Display only, so it can be tested without a real PDF.)
+struct ThumbCell: View {
+    var number: Int
+    var image: NSImage?
+    var selected: Bool
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.card)
+                    if let image {
+                        Image(nsImage: image).resizable().scaledToFit().padding(6)
+                    } else {
+                        Image(systemName: "doc").font(.system(size: 22, weight: .light)).foregroundStyle(Theme.mute)
+                    }
+                    if selected {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Theme.warn.opacity(0.18))
+                        Image(systemName: "xmark.circle.fill").font(.system(size: 28)).foregroundStyle(Theme.warn)
+                    }
+                }
+                .frame(height: 140)
+                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(selected ? Theme.warn : Theme.ink.opacity(0.5), lineWidth: selected ? 2.5 : 1))
+                Text("\(number)").font(.mono(12, selected ? .semibold : .regular)).foregroundStyle(selected ? Theme.warn : Theme.mute)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Page \(number)")
+        .accessibilityValue(selected ? "marked for deletion" : "kept")
+    }
+}
+
+/// Loads a page picture only when the cell scrolls into view.
+private struct PageThumb: View {
+    let document: PDFDocument
+    let number: Int
+    let selected: Bool
+    let action: () -> Void
+    @State private var image: NSImage?
+
+    var body: some View {
+        ThumbCell(number: number, image: image, selected: selected, action: action)
+            .task {
+                image = document.page(at: number - 1)?.thumbnail(of: CGSize(width: 260, height: 340), for: .cropBox)
+            }
+    }
+}
+
+struct DeletePane: View {
+    @State private var file: URL?
+    @State private var document: PDFDocument?
+    @State private var pageCount = 0
+    @State private var selected: Set<Int> = []
+    @State private var rangeText = ""
+    @State private var rangeError: String?
+    @State private var syncingFromText = false
+    @State private var status: String?
+    @State private var ok = true
+
+    init(previewFile: URL? = nil) {
+        // Only used for design previews: opens with a PDF loaded and two pages picked.
+        guard let previewFile, let doc = PDFDocument(url: previewFile) else { return }
+        _file = State(initialValue: previewFile)
+        _document = State(initialValue: doc)
+        _pageCount = State(initialValue: doc.pageCount)
+        _selected = State(initialValue: [2, 5])
+        _rangeText = State(initialValue: "2, 5")
+    }
+
+    private var keepCount: Int { pageCount - selected.count }
+    private var canDelete: Bool { !selected.isEmpty && selected.count < pageCount }
+
+    var body: some View {
+        TwoColumns {
+            Card(title: "Input", icon: "doc") {
+                DropZone(title: "Drop a PDF", subtitle: "Then click the pages you want to remove",
+                         systemImage: "doc", types: [.pdf], multiple: false) { load($0.first) }
+                if let file {
+                    Label("\(file.lastPathComponent) · \(pageCount) pages", systemImage: "checkmark.circle")
+                        .font(.mono(12)).foregroundStyle(Theme.mute).lineLimit(2)
+                }
+            }
+        } right: {
+            Card(title: "Pages to delete", icon: "trash") {
+                if file == nil {
+                    Hint("Drop a PDF first.")
+                } else {
+                    PillField(placeholder: "Type pages, e.g. 2, 5-7", text: $rangeText, icon: "number")
+                    StatusLine(text: rangeError, isError: true)
+                    Text(selected.isEmpty ? "No pages picked yet" : "\(selected.count) picked · the new file will have \(keepCount) page\(keepCount == 1 ? "" : "s")")
+                        .font(.mono(14, .semibold))
+                    Hint("Click pages in the grid below to pick them, or type page numbers above.")
+                    if selected.count >= pageCount && pageCount > 0 { StatusLine(text: "You can’t delete every page. Keep at least one.", isError: true) }
+                    HStack {
+                        Button { delete() } label: { Label("Delete pages", systemImage: "trash") }
+                            .buttonStyle(.pill(.filled)).disabled(!canDelete)
+                        Button { selected = []; rangeText = "" } label: { Label("Clear", systemImage: "xmark") }
+                            .buttonStyle(.pill(.outlined)).disabled(selected.isEmpty)
+                    }
+                    Hint("Your original file is not changed. The result is saved next to it as a new file.")
+                }
+                StatusLine(text: status, isError: !ok)
+            }
+        }
+        .onChange(of: rangeText) { applyTypedPages() }
+        .onChange(of: selected) {
+            if syncingFromText { syncingFromText = false; return }
+            rangeText = PDFTools.formatRanges(selected)
+            rangeError = nil
+        }
+
+        if let document, pageCount > 0 {
+            Card(title: "Pick pages", icon: "square.grid.3x3") {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104, maximum: 130), spacing: 16)], spacing: 16) {
+                    ForEach(1...pageCount, id: \.self) { number in
+                        PageThumb(document: document, number: number, selected: selected.contains(number)) {
+                            if selected.contains(number) { selected.remove(number) } else { selected.insert(number) }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func load(_ url: URL?) {
+        status = nil; rangeError = nil; selected = []; rangeText = ""
+        guard let url else { return }
+        guard let doc = PDFDocument(url: url) else { file = nil; document = nil; pageCount = 0; status = "That file could not be opened as a PDF."; ok = false; return }
+        if doc.isLocked { file = nil; document = nil; pageCount = 0; status = "That PDF is password protected. Unlock it first."; ok = false; return }
+        file = url; document = doc; pageCount = doc.pageCount
+    }
+
+    /// Typing page numbers updates the picked pages (ignoring half-typed input).
+    private func applyTypedPages() {
+        guard pageCount > 0 else { return }
+        let trimmed = rangeText.trimmingCharacters(in: .whitespaces)
+        let parsed: Set<Int>
+        if trimmed.isEmpty { parsed = [] }
+        else {
+            do { parsed = try PDFTools.pageSet(from: trimmed, pageCount: pageCount); rangeError = nil }
+            catch { rangeError = error.localizedDescription; return }
+        }
+        if parsed != selected { syncingFromText = true; selected = parsed }
+    }
+
+    private func delete() {
+        guard let file else { return }
+        let out = PDFTools.unique(file.deletingLastPathComponent()
+            .appendingPathComponent(file.deletingPathExtension().lastPathComponent + " - pages removed.pdf"))
+        do {
+            let remaining = try PDFTools.deletePages(from: file, pages: selected, to: out)
+            status = "Saved “\(out.lastPathComponent)” with \(remaining) page\(remaining == 1 ? "" : "s")."; ok = true
+            NSWorkspace.shared.activateFileViewerSelecting([out])
+        } catch { status = error.localizedDescription; ok = false }
     }
 }
