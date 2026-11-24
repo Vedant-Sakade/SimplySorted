@@ -315,6 +315,25 @@ final class ToolsTests: XCTestCase {
         XCTAssertFalse(outcome.cancelled)
     }
 
+    func testResolutionNames() {
+        XCTAssertNil(ResolutionName.label(forLongSide: 800))
+        XCTAssertNil(ResolutionName.label(forLongSide: 1000))
+        XCTAssertEqual(ResolutionName.label(forLongSide: 3840), "4K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 3800), "4K", "within 2% counts as that size")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 2048), "2K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 7680), "8K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 1920), "Full HD")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 4849), "about 5K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 4400), "between 4K and 5K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 3600), "about 4K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 3500), "between QHD and 4K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 2150), "about 2K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 2300), "between 2K and QHD")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 6200), "between 5K and 8K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 12000), "above 8K")
+        XCTAssertEqual(ResolutionName.label(forLongSide: 1672), "between HD and Full HD")
+    }
+
     func testSharpenChangesTheEnlargedPicture() throws {
         let png = try makePNG("sharp.png", size: CGSize(width: 160, height: 100), text: "Aa")
         let plain = try ImageTools.convert(png, options: ImageOptions(format: .png, resize: .percent(3), allowEnlarge: true, sharpen: false))

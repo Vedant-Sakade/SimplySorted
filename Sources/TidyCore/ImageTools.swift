@@ -27,6 +27,30 @@ public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
     public var usesQuality: Bool { self != .png }
 }
 
+/// Everyday names for picture sizes ("4K", "Full HD"), judged by the longest side in pixels.
+public enum ResolutionName {
+    public static let standards: [(side: Int, name: String)] = [
+        (1280, "HD"), (1920, "Full HD"), (2048, "2K"), (2560, "QHD"), (3840, "4K"), (5120, "5K"), (7680, "8K"),
+    ]
+
+    /// "4K" when the size is that size (within 2%), "about 4K" when it is close (within 8%),
+    /// otherwise where it falls ("between 2K and QHD"). Nil for small pictures.
+    public static func label(forLongSide side: Int) -> String? {
+        guard side >= 1100 else { return nil }
+        let value = Double(side)
+        if let near = standards.min(by: { abs(log(value / Double($0.side))) < abs(log(value / Double($1.side))) }) {
+            let ratio = value / Double(near.side)
+            if abs(ratio - 1) <= 0.02 { return near.name }
+            if abs(ratio - 1) <= 0.08 { return "about \(near.name)" }
+        }
+        guard let first = standards.first, let last = standards.last else { return nil }
+        if value < Double(first.side) { return nil }
+        if value > Double(last.side) { return "above \(last.name)" }
+        guard let upperIndex = standards.firstIndex(where: { Double($0.side) > value }), upperIndex > 0 else { return nil }
+        return "between \(standards[upperIndex - 1].name) and \(standards[upperIndex].name)"
+    }
+}
+
 /// How an image's pixel size changes.
 public enum ResizeMode: Equatable, Sendable {
     case original

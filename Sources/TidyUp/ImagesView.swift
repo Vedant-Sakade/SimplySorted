@@ -110,7 +110,8 @@ struct ImagesView: View {
         let out = resizeMode.targetSize(width: first.width, height: first.height, allowEnlarge: canEnlarge)
         let more = files.count > 1 ? " (first of \(files.count))" : ""
         if out == first { return "\(first.width) × \(first.height) px stays the same" + more }
-        return "\(first.width) × \(first.height) → \(out.width) × \(out.height) px" + more
+        let name = ResolutionName.label(forLongSide: max(out.width, out.height)).map { " · \($0)" } ?? ""
+        return "\(first.width) × \(first.height) → \(out.width) × \(out.height) px\(name)" + more
     }
 
     /// Extra notes about enlarging: it is estimated, big results are heavy, and the 16,000 px limit.
@@ -197,7 +198,20 @@ struct ImagesView: View {
                     if sizeMode == .percent {
                         SettingRow(label: "Scale") {
                             Slider(value: Binding(get: { percent }, set: { percent = ($0 / 5).rounded() * 5 }), in: 10...400).tint(Theme.ink).frame(maxWidth: 190)
-                            Text("\(Int(percent))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
+                            Text("\(Int(percent.rounded()))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
+                        }
+                        if let first = firstSize {
+                            SettingRow(label: "Jump to") {
+                                ForEach([("2K", 2048), ("QHD", 2560), ("4K", 3840), ("8K", 7680)], id: \.1) { name, side in
+                                    let needed = Double(side) / Double(max(first.width, first.height)) * 100
+                                    Button { percent = needed } label: { Text(name) }
+                                        .buttonStyle(.pill(.outlined, compact: true))
+                                        .disabled(needed < 10 || needed > ResizeMode.maxPercent * 100)
+                                        .help(needed > ResizeMode.maxPercent * 100
+                                              ? "Needs more than 400%. Use Pixels for this size."
+                                              : "Scale so the longest side is \(side) px")
+                                }
+                            }
                         }
                     }
                     if sizeMode == .pixels {

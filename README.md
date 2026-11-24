@@ -55,7 +55,7 @@ Downloads and Desktop fill up with screenshots, PDFs, installers, zips and files
 
 - Convert to **JPEG, PNG or HEIC**.
 - **Quality** slider up to 100%, so you pick the balance between file size and sharpness.
-- **Scale the resolution** three ways: keep the original size, **Scale** by a percentage (10% to 400%), or set exact **Pixels** by width, height or both. Quick picks cover 800 px up to **2K, QHD, 4K and 8K**. The shape is always kept, and a live line shows the result, for example `1448 × 1086 → 2048 × 1536 px`. Phone photos that are stored sideways are measured the way you see them.
+- **Scale the resolution** three ways: keep the original size, **Scale** by a percentage (10% to 400%), or set exact **Pixels** by width, height or both. Quick picks cover 800 px up to **2K, QHD, 4K and 8K**. The shape is always kept, and a live line shows the result with its everyday name, for example `1448 × 1086 → 2896 × 2172 px · between QHD and 4K`. In Scale mode, **Jump to** buttons (2K, QHD, 4K, 8K) set the slider so the longest side hits that size. Phone photos that are stored sideways are measured the way you see them.
 - **Remove location and camera info** (GPS and other hidden photo data) before you share a picture.
 - **Enlarge** small pictures up to 4× or to 2K, 4K or 8K, using high-quality (Lanczos) resampling. An optional **Sharpen after enlarging** switch counters the softness. Enlarging makes a picture bigger, not more detailed: the new pixels are estimated from the old ones. Output is limited to 16,000 px on the longest side, with a warning for very large results. In Pixels mode, "Also grow smaller images" can be switched off so a batch only shrinks.
 - A preview of your picture, with its size and file size, appears next to the settings.
