@@ -18,14 +18,14 @@ struct TidyUpApp: App {
     @State private var model = AppModel()
 
     var body: some Scene {
-        Window("TidyUp", id: "main") {
+        Window("Simply Sorted", id: "main") {
             ContentView().environment(model)
                 .preferredColorScheme(model.appearance == .dark ? .dark : .light)
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1000, height: 720)
 
-        MenuBarExtra("TidyUp", systemImage: "sparkles") {
+        MenuBarExtra("Simply Sorted", systemImage: "sparkles") {
             MenuContent().environment(model)
         }
     }
@@ -45,10 +45,10 @@ private struct MenuContent: View {
         Button("Capture Text from Screen") { model.captureTextFromScreen() }
         if let message = model.message { Text(message) }
         Divider()
-        Button("Open TidyUp") {
+        Button("Open Simply Sorted") {
             openWindow(id: "main")
             NSApp.activate(ignoringOtherApps: true)
         }
-        Button("Quit TidyUp") { NSApp.terminate(nil) }.keyboardShortcut("q")
+        Button("Quit Simply Sorted") { NSApp.terminate(nil) }.keyboardShortcut("q")
     }
 }

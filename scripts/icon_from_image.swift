@@ -1,5 +1,5 @@
-// Turns Resources/IconSource.png (a rounded tile on a light backdrop) into a 1024x1024
-// macOS icon: tile cropped out, clipped to a rounded square, 100px transparent margin,
+// Turns Resources/IconSource.png (a square logo on a flat sage background) into a 1024x1024
+// macOS icon: centre of the image scaled into a rounded square, 100px transparent margin,
 // soft drop shadow. Usage: swift icon_from_image.swift <source.png> <output.png>
 import Foundation
 import CoreGraphics
@@ -13,8 +13,10 @@ guard args.count == 3,
     FileHandle.standardError.write(Data("usage: icon_from_image <source.png> <output.png>\n".utf8)); exit(1)
 }
 
-// Tile bounds inside the 1254px source (measured), inset a little to drop the edge bevel.
-let crop = CGRect(x: 190, y: 198, width: 868, height: 868)
+// Keep the central 84% of the source so the logo fills about 80% of the tile
+// (the flat background makes any crop safe). Works for any square source size.
+let side = CGFloat(min(img.width, img.height)) * 0.84
+let crop = CGRect(x: (CGFloat(img.width) - side) / 2, y: (CGFloat(img.height) - side) / 2, width: side, height: side)
 guard let tile = img.cropping(to: crop) else { exit(1) }
 
 let canvas = 1024, inner: CGFloat = 824
@@ -28,7 +30,7 @@ let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, 
 
 ctx.saveGState()
 ctx.setShadow(offset: CGSize(width: 0, height: -10), blur: 22, color: CGColor(gray: 0, alpha: 0.28))
-ctx.addPath(path); ctx.setFillColor(CGColor(red: 0.95, green: 0.965, blue: 0.92, alpha: 1)); ctx.fillPath()
+ctx.addPath(path); ctx.setFillColor(CGColor(red: 0.91, green: 0.933, blue: 0.89, alpha: 1)); ctx.fillPath()
 ctx.restoreGState()
 
 ctx.saveGState()

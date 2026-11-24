@@ -1,7 +1,7 @@
 #!/bin/bash
 # Regenerates Resources/AppIcon.icns from Resources/IconSource.png.
-# To change the icon: replace Resources/IconSource.png (a rounded tile on a light
-# backdrop), run this, then run scripts/build_app.sh.
+# To change the icon: replace Resources/IconSource.png (a square logo on a flat
+# background), run this, then run scripts/build_app.sh.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 

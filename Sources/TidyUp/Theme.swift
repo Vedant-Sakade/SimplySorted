@@ -2,7 +2,7 @@ import SwiftUI
 import AppKit
 import CoreText
 
-/// TidyUp's look: pale sage paper, thin ink outlines, monospaced type, big rounded cards and pill buttons.
+/// Simply Sorted's look: pale sage paper, thin ink outlines, monospaced type, big rounded cards and pill buttons.
 enum Theme {
     static let bg = Color(light: 0xE8EEE3, dark: 0x121712)
     static let card = Color(light: 0xEFF4EA, dark: 0x1A211A)

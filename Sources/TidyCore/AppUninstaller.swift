@@ -6,7 +6,7 @@ public struct InstalledApp: Identifiable, Hashable, Sendable {
     public let name: String
     public let bundleID: String
 
-    /// System apps, anything com.apple.*, and TidyUp itself are never offered for removal.
+    /// System apps, anything com.apple.*, and Simply Sorted itself (still the bundle id local.tidyup.app) are never offered for removal.
     public var isProtected: Bool {
         bundleID.hasPrefix("com.apple.") || url.path.hasPrefix("/System/") || bundleID == "local.tidyup.app"
     }

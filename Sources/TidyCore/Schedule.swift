@@ -1,6 +1,6 @@
 import Foundation
 
-/// When TidyUp should sort on its own (daily or weekly at a set time).
+/// When Simply Sorted should sort on its own (daily or weekly at a set time).
 public struct Schedule: Codable, Equatable, Sendable {
     public enum Frequency: String, Codable, CaseIterable, Sendable {
         case daily, weekly

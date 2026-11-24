@@ -3,7 +3,7 @@ import ImageIO
 import UniformTypeIdentifiers
 
 /// Works out what a file really is by looking inside it. Used only when the name gives no clue
-/// (no extension, or an extension TidyUp doesn't know), e.g. images saved from Instagram with a caption as the name.
+/// (no extension, or an extension Simply Sorted doesn't know), e.g. images saved from Instagram with a caption as the name.
 enum ContentSniffer {
     static func category(of url: URL) -> Category? {
         guard let handle = try? FileHandle(forReadingFrom: url) else { return nil }

@@ -3,7 +3,7 @@ import AppKit
 import PDFKit
 
 /// Draws every screen to PNG files without opening a window (used to check the design).
-/// Run: TidyUp.app/Contents/MacOS/TidyUp --render-preview <folder>
+/// Run: Simply Sorted.app/Contents/MacOS/SimplySorted --render-preview <folder>
 @MainActor
 enum PreviewRenderer {
     static func render(to directory: String) {

@@ -75,7 +75,7 @@ struct SortView: View {
 
                     ResultStrip()
                     ForEach(model.planErrors, id: \.self) { error in
-                        StatusLine(text: error + " Allow TidyUp in System Settings > Privacy & Security > Files and Folders.", isError: true)
+                        StatusLine(text: error + " Allow Simply Sorted in System Settings > Privacy & Security > Files and Folders.", isError: true)
                     }
                 }
             }

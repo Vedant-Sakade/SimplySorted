@@ -260,7 +260,7 @@ final class AppModel {
             process.waitUntilExit()
             guard FileManager.default.fileExists(atPath: file.path) else {       // cancelled with Esc, or not allowed
                 await MainActor.run {
-                    self.message = "No capture taken. If you did not cancel, allow TidyUp in System Settings > Privacy & Security > Screen Recording."
+                    self.message = "No capture taken. If you did not cancel, allow Simply Sorted in System Settings > Privacy & Security > Screen Recording."
                 }
                 return
             }

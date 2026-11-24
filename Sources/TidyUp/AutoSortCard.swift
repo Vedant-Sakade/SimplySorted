@@ -46,7 +46,7 @@ struct AutoSortCard: View {
                             Label("Next sort: \(next.formatted(.dateTime.weekday(.wide).day().month(.wide).hour().minute()))", systemImage: "calendar")
                                 .font(.mono(13, .semibold))
                         }
-                        Hint("If your Mac was asleep or TidyUp was closed at that time, it sorts once when TidyUp is running again.")
+                        Hint("If your Mac was asleep or Simply Sorted was closed at that time, it sorts once when Simply Sorted is running again.")
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -57,8 +57,8 @@ struct AutoSortCard: View {
                 VStack(alignment: .leading, spacing: 14) {
                     Toggle(isOn: Binding(get: { model.loginItemEnabled }, set: { model.setLoginItem($0) })) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Open TidyUp when I log in").font(.mono(14, .semibold))
-                            Hint("Auto sort only runs while TidyUp is open. It lives in the menu bar, so opening at login keeps it running.")
+                            Text("Open Simply Sorted when I log in").font(.mono(14, .semibold))
+                            Hint("Auto sort only runs while Simply Sorted is open. It lives in the menu bar, so opening at login keeps it running.")
                         }
                     }
                     .toggleStyle(.pill)
