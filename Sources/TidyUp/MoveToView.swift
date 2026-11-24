@@ -3,7 +3,12 @@ import TidyCore
 
 struct MoveToView: View {
     @Environment(AppModel.self) private var model
-    @State private var staged: [URL] = []
+    @State private var staged: [URL]
+
+    /// The argument only exists for screenshots: files already waiting to be moved.
+    init(demoStaged: [URL] = []) {
+        _staged = State(initialValue: demoStaged)
+    }
 
     var body: some View {
         PageScroll {
@@ -82,7 +87,7 @@ private struct DestinationRow: View {
                 .foregroundStyle(exists ? Theme.ink : Theme.warn)
             VStack(alignment: .leading, spacing: 2) {
                 Text(url.lastPathComponent).font(.mono(13, .semibold)).lineLimit(1)
-                Text(path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                Text(PathDisplay.short(path))
                     .font(.mono(10)).foregroundStyle(Theme.mute).lineLimit(1).truncationMode(.middle)
             }
             Spacer(minLength: 8)

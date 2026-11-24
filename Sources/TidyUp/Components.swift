@@ -642,3 +642,13 @@ struct DonePill: View {
             .onAppear { bounce.toggle() }
     }
 }
+
+/// Shows a folder path with the home folder abbreviated to "~".
+enum PathDisplay {
+    /// Screenshots only: pretend this folder is the home folder, so demo paths read "~/Downloads".
+    nonisolated(unsafe) static var homeOverride: String?
+
+    static func short(_ path: String) -> String {
+        path.replacingOccurrences(of: homeOverride ?? NSHomeDirectory(), with: "~")
+    }
+}

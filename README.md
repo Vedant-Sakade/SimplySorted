@@ -4,7 +4,7 @@
 
 Free and open source. Runs entirely on your Mac. Nothing is uploaded anywhere, and the app has no network code.
 
-![Simply Sorted](docs/screenshot.png)
+![Simply Sorted](docs/screenshots/sort.png)
 
 ## Install
 
@@ -19,6 +19,25 @@ If macOS still blocks it, go to System Settings > Privacy & Security and click *
 **Needs:** macOS 14 (Sonoma) or newer. Works on Apple Silicon and Intel Macs.
 
 The first time it touches Downloads, Desktop or Documents, macOS asks for permission. Click Allow, or Simply Sorted can't see those folders.
+
+## Screenshots
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/images.png" alt="Images tab: scale a picture up to 8K"><br><b>Images</b>: convert, shrink or enlarge, with a live size line and 2K / 4K / 8K jump buttons</td>
+    <td width="50%"><img src="docs/screenshots/pdf-delete-pages.png" alt="PDF tab: delete pages"><br><b>PDF</b>: merge, split, delete pages or compress. Click pages to pick them</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/move-to.png" alt="Move to tab"><br><b>Move to</b>: favourite folders, send files there in one click</td>
+    <td width="50%"><img src="docs/screenshots/text-from-screen.png" alt="Text from Screen tab"><br><b>Text from Screen</b>: copy the text out of any screenshot</td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/sort-dark.png" alt="Sort tab in dark mode"><br><b>Dark mode</b>: one switch, and the app remembers your choice</td>
+    <td width="50%"><img src="docs/screenshots/images-dark.png" alt="Images tab in dark mode"><br><b>Dark mode</b>: every screen has a matching dark look</td>
+  </tr>
+</table>
+
+All screenshots use made-up demo files.
 
 ## What is it for?
 
@@ -129,7 +148,7 @@ scripts/make_icon.sh          # only after replacing Resources/IconSource.png
 swift test                    # engine, app-model and real-click control tests
 ```
 
-Requires macOS 14+ and Xcode (or its command-line tools). `SimplySorted --render-preview <folder>` draws every screen to PNG for checking the design.
+Requires macOS 14+ and Xcode (or its command-line tools). `SimplySorted --render-preview <folder>` draws every screen to PNG for checking the design, and `SimplySorted --render-screenshots <folder>` makes the README screenshots from demo data.
 
 ## Credits
 

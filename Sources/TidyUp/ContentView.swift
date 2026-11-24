@@ -50,12 +50,24 @@ struct ContentView: View {
     /// or a result is still there when you come back.
     @State private var visited: Set<SidebarItem>
 
-    init(initial: SidebarItem = .sort) {
+    /// Screenshots only: a ready-made page (with demo data) to show instead of the normal one.
+    private let demoPages: [SidebarItem: AnyView]
+
+    init(initial: SidebarItem = .sort, demoPages: [SidebarItem: AnyView] = [:]) {
         _selection = State(initialValue: initial)
         _visited = State(initialValue: [initial])
+        self.demoPages = demoPages
     }
 
     @ViewBuilder private func page(_ item: SidebarItem) -> some View {
+        if let demo = demoPages[item] {
+            demo
+        } else {
+            realPage(item)
+        }
+    }
+
+    @ViewBuilder private func realPage(_ item: SidebarItem) -> some View {
         switch item {
         case .sort: SortView()
         case .moveTo: MoveToView()

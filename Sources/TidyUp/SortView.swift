@@ -121,7 +121,7 @@ private struct FolderRow: View {
                     Image(systemName: "folder").font(.system(size: 16, weight: .light))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(folder.name).font(.mono(14, .semibold)).lineLimit(1).truncationMode(.middle)
-                        Text(folder.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                        Text(PathDisplay.short(folder.path))
                             .font(.mono(11)).foregroundStyle(Theme.mute).lineLimit(1).truncationMode(.middle)
                     }
                     Spacer(minLength: 8)

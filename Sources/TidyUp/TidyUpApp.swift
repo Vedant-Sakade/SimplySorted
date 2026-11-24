@@ -10,6 +10,10 @@ enum Launcher {
             MainActor.assumeIsolated { PreviewRenderer.render(to: args[i + 1]) }
             return
         }
+        if let i = args.firstIndex(of: "--render-screenshots"), i + 1 < args.count {
+            MainActor.assumeIsolated { ScreenshotRenderer.render(to: args[i + 1]) }
+            return
+        }
         TidyUpApp.main()
     }
 }

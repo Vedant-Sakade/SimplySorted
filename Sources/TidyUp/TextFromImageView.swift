@@ -11,6 +11,15 @@ struct TextFromImageView: View {
     @State private var picked: URL?
     @State private var pickedThumb: NSImage?
 
+    /// The arguments only exist for screenshots: show a finished result for a sample picture.
+    init(demoText: String? = nil, sampleImage: URL? = nil) {
+        _text = State(initialValue: demoText ?? "")
+        if let sampleImage {
+            _picked = State(initialValue: sampleImage)
+            _pickedThumb = State(initialValue: ImagesView.thumbnail(of: sampleImage, maxSide: 480))
+        }
+    }
+
     var body: some View {
         PageScroll {
             TwoColumns(stretch: true) {

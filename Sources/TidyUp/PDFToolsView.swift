@@ -5,7 +5,14 @@ import TidyCore
 
 struct PDFToolsView: View {
     enum Mode: String, Hashable { case merge, split, delete, compress }
-    @State private var mode: Mode = .merge
+    @State private var mode: Mode
+    private let previewFile: URL?
+
+    /// The arguments only exist for screenshots: open on a tab with a sample PDF loaded.
+    init(initial: Mode = .merge, previewFile: URL? = nil) {
+        _mode = State(initialValue: initial)
+        self.previewFile = previewFile
+    }
 
     var body: some View {
         PageScroll {
@@ -16,7 +23,7 @@ struct PDFToolsView: View {
             switch mode {
             case .merge: MergePane()
             case .split: SplitPane()
-            case .delete: DeletePane()
+            case .delete: DeletePane(previewFile: previewFile)
             case .compress: CompressPane()
             }
         }
