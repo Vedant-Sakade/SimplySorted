@@ -1,0 +1,46 @@
+name: Something is not working
+description: Report a bug or something confusing
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping! Please do not include private file names or screenshots of your own files.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: What did you do, and what went wrong?
+      placeholder: "I picked 3 pictures in Images, pressed Convert and ..."
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect instead?
+    validations:
+      required: false
+  - type: input
+    id: version
+    attributes:
+      label: Simply Sorted version
+      description: Shown on the download page, for example 1.3.4
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: "macOS 15.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: chip
+    attributes:
+      label: Your Mac
+      options:
+        - Apple Silicon (M1, M2, M3, M4 ...)
+        - Intel
+        - Not sure
+    validations:
+      required: false

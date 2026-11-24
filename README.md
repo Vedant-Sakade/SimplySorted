@@ -39,6 +39,10 @@ The first time it touches Downloads, Desktop or Documents, macOS asks for permis
 
 All screenshots use made-up demo files.
 
+## Feedback
+
+Found a bug or have an idea? [Open an issue](https://github.com/Vedant-Sakade/SimplySorted/issues/new/choose), or start a conversation in [Discussions](https://github.com/Vedant-Sakade/SimplySorted/discussions). If you like the app, a star on GitHub helps other people find it.
+
 ## What is it for?
 
 Downloads and Desktop fill up with screenshots, PDFs, installers, zips and files with no name you recognise. Simply Sorted puts each file in a folder for its type, shows you what it will do first, and lets you undo it. The extra tools cover small jobs that normally need several separate apps or websites, such as shrinking photos, merging PDFs or removing an app properly.

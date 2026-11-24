@@ -1,0 +1,25 @@
+name: Idea or request
+description: Suggest something new or a change
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to be able to do?
+      description: Tell us the problem first, then how you imagine it working.
+    validations:
+      required: true
+  - type: dropdown
+    id: tab
+    attributes:
+      label: Which part of the app is it about?
+      options:
+        - Sort
+        - Move to
+        - Images
+        - PDF
+        - Text from Screen
+        - Uninstall
+        - Something new
+    validations:
+      required: false
