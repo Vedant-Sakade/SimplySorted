@@ -44,8 +44,18 @@ enum PreviewRenderer {
         art.unlockFocus()
         if let tiff = art.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) { try? png.write(to: sample) }
         defer { try? FileManager.default.removeItem(at: sample) }
+        // A tall portrait picture, the case that used to push everything off the screen.
+        let tall = FileManager.default.temporaryDirectory.appendingPathComponent("Portrait photo.png")
+        let tallArt = NSImage(size: NSSize(width: 768, height: 1024))
+        tallArt.lockFocus()
+        NSGradient(colors: [NSColor(red: 0.7, green: 0.15, blue: 0.2, alpha: 1), NSColor(red: 0.95, green: 0.8, blue: 0.7, alpha: 1)])?
+            .draw(in: NSRect(x: 0, y: 0, width: 768, height: 1024), angle: 90)
+        tallArt.unlockFocus()
+        if let tiff = tallArt.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) { try? png.write(to: tall) }
+        defer { try? FileManager.default.removeItem(at: tall) }
         let cases: [(String, ImagesView)] = [
             ("images-loaded", ImagesView(initialMode: .pixels, width: "2048", sampleImage: sample)),
+            ("images-portrait", ImagesView(initialMode: .percent, percent: 200, sampleImage: tall)),
             ("images-working", ImagesView(initialMode: .pixels, width: "2048", sampleImage: sample, demo: .working(done: 3, total: 12))),
             ("images-done", ImagesView(initialMode: .pixels, width: "2048", sampleImage: sample, demo: .finished)),
             ("images-scale", ImagesView(initialMode: .percent)),

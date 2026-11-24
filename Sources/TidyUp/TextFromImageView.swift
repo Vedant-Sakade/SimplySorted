@@ -22,16 +22,13 @@ struct TextFromImageView: View {
                     Hint("Drag over the text you want. It is copied to your clipboard and shown here.")
                     HairlineDivider()
                     DropZone(title: "Or drop an image", subtitle: "Screenshot, scan or photo of a page",
-                             systemImage: "text.viewfinder", types: [.image], multiple: false) { files in
+                             systemImage: "text.viewfinder", types: [.image], multiple: false,
+                             compact: picked != nil, compactTitle: "Drop a different image, or click to choose") { files in
                         if let file = files.first { pick(file) }
                     }
                     if let picked {
                         if let pickedThumb {
-                            Image(nsImage: pickedThumb).resizable().scaledToFit()
-                                .frame(maxHeight: 200)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink.opacity(0.25), lineWidth: 1))
-                                .frame(maxWidth: .infinity)
+                            PickedPreview(image: pickedThumb, maxHeight: 200, onRemove: working ? nil : { clearPicked() })
                         }
                         PickedFileRow(name: picked.lastPathComponent, detail: "") { clearPicked() }
                             .disabled(working)

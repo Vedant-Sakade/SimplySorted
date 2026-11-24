@@ -31,7 +31,8 @@ private struct MergePane: View {
     var body: some View {
         TwoColumns(stretch: true) {
             Card(title: "Input", icon: "doc.on.doc", fill: true) {
-                DropZone(title: "Drop PDFs to merge", subtitle: "They are joined in the order listed", systemImage: "doc.on.doc", types: [.pdf]) {
+                DropZone(title: "Drop PDFs to merge", subtitle: "They are joined in the order listed", systemImage: "doc.on.doc", types: [.pdf], compact: !files.isEmpty,
+                         compactTitle: "Drop more PDFs, or click to choose") {
                     files.append(contentsOf: $0.filter { !files.contains($0) })
                 }
                 Hint("Add as many PDFs as you like, then use the arrows on the right to put them in order. The cross removes one by mistake.")
@@ -88,7 +89,8 @@ private struct SplitPane: View {
     var body: some View {
         TwoColumns(stretch: true) {
             Card(title: "Input", icon: "scissors", fill: true) {
-                DropZone(title: "Drop a PDF to split", subtitle: "One file at a time", systemImage: "scissors", types: [.pdf], multiple: false) {
+                DropZone(title: "Drop a PDF to split", subtitle: "One file at a time", systemImage: "scissors", types: [.pdf], multiple: false,
+                         compact: file != nil, compactTitle: "Drop a different PDF, or click to choose") {
                     file = $0.first; status = nil
                 }
                 if let file {
@@ -139,7 +141,8 @@ private struct CompressPane: View {
         TwoColumns(stretch: true) {
             Card(title: "Input", icon: "arrow.down.right.and.arrow.up.left", fill: true) {
                 DropZone(title: "Drop PDFs to shrink", subtitle: "Best for scans and picture-heavy PDFs",
-                         systemImage: "arrow.down.right.and.arrow.up.left", types: [.pdf]) { files = $0; status = []; justDone = false }
+                         systemImage: "arrow.down.right.and.arrow.up.left", types: [.pdf], compact: !files.isEmpty,
+                         compactTitle: "Drop other PDFs, or click to choose") { files = $0; status = []; justDone = false }
                 if !files.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
                         HStack {
@@ -327,7 +330,8 @@ struct DeletePane: View {
         TwoColumns(stretch: true) {
             Card(title: "Input", icon: "doc", fill: true) {
                 DropZone(title: "Drop a PDF", subtitle: "Then click the pages you want to remove",
-                         systemImage: "doc", types: [.pdf], multiple: false) { load($0.first) }
+                         systemImage: "doc", types: [.pdf], multiple: false, compact: file != nil,
+                         compactTitle: "Drop a different PDF, or click to choose") { load($0.first) }
                 if let file {
                     PickedFileRow(name: file.lastPathComponent, detail: "\(pageCount) pages") { clear() }
                 }

@@ -366,6 +366,9 @@ struct DropZone: View {
     var systemImage = "square.and.arrow.down"
     var types: [UTType] = []
     var multiple = true
+    /// Once something is picked, shrink the big tile to a slim bar (it still takes drops and clicks).
+    var compact = false
+    var compactTitle = "Drop more, or click to choose"
     var onFiles: ([URL]) -> Void
     @State private var targeted = false
 
@@ -375,6 +378,40 @@ struct DropZone: View {
             let urls = chooseFiles(types: types, multiple: multiple)
             if !urls.isEmpty { onFiles(urls) }
         } label: {
+            if compact { compactLabel } else { fullLabel }
+        }
+        .buttonStyle(.plain)
+        .dropDestination(for: URL.self) { urls, _ in
+            let files = urls.filter(\.isFileURL)
+            guard !files.isEmpty else { return false }
+            onFiles(multiple ? files : Array(files.prefix(1)))
+            return true
+        } isTargeted: { targeted = $0 }
+    }
+
+    private var compactLabel: some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .light))
+                .frame(width: 30, height: 30)
+                .overlay(Circle().stroke(Theme.ink, lineWidth: 1.2))
+            Text(compactTitle).font(.mono(11, .semibold)).textCase(.uppercase).tracking(0.6).lineLimit(1)
+            Spacer(minLength: 8)
+            Image(systemName: "folder").font(.system(size: 13, weight: .regular))
+        }
+        .padding(.horizontal, 14).padding(.vertical, 10)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .strokeBorder(style: StrokeStyle(lineWidth: 1.2, dash: [5, 5]))
+                .foregroundStyle(targeted ? Theme.ink : Theme.mute)
+                .background(targeted ? Theme.ink.opacity(0.07) : Color.clear, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var fullLabel: some View {
+        Group {
             VStack(spacing: 10) {
                 Image(systemName: systemImage)
                     .font(.system(size: 22, weight: .light))
@@ -397,13 +434,32 @@ struct DropZone: View {
             )
             .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
-        .buttonStyle(.plain)
-        .dropDestination(for: URL.self) { urls, _ in
-            let files = urls.filter(\.isFileURL)
-            guard !files.isEmpty else { return false }
-            onFiles(multiple ? files : Array(files.prefix(1)))
-            return true
-        } isTargeted: { targeted = $0 }
+    }
+}
+
+/// A picked picture, centred, never taller than `maxHeight`, with a cross to take it out again.
+struct PickedPreview: View {
+    var image: NSImage
+    var maxHeight: CGFloat = 240
+    var onRemove: (() -> Void)?
+
+    var body: some View {
+        let ratio = max(0.2, min(5, image.size.width / max(image.size.height, 1)))
+        Color.clear
+            .aspectRatio(ratio, contentMode: .fit)
+            .overlay { Image(nsImage: image).resizable().scaledToFill() }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink.opacity(0.25), lineWidth: 1))
+            .overlay(alignment: .topTrailing) {
+                if let onRemove {
+                    Button(action: onRemove) { Image(systemName: "xmark") }
+                        .buttonStyle(IconButtonStyle(size: 30))
+                        .background(Circle().fill(Theme.card))
+                        .padding(10)
+                        .help("Remove this image")
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: maxHeight)
     }
 }
 

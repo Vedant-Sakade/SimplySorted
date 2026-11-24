@@ -10,7 +10,8 @@ struct MoveToView: View {
             TwoColumns(stretch: true) {
                 Card(title: "Files to move", icon: "tray.and.arrow.down", fill: true) {
                     DropZone(title: "Drop files or folders", subtitle: "Then pick a destination — or drop straight onto one.",
-                             systemImage: "tray.and.arrow.down") { staged.append(contentsOf: $0) }
+                             systemImage: "tray.and.arrow.down", compact: !staged.isEmpty,
+                             compactTitle: "Drop more files, or click to choose") { staged.append(contentsOf: $0) }
                     if !staged.isEmpty {
                         HStack {
                             Text("\(staged.count) ready").font(.mono(12, .semibold)).textCase(.uppercase)

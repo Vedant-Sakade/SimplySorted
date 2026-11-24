@@ -141,7 +141,8 @@ struct ImagesView: View {
             TwoColumns(stretch: true) {
                 Card(title: "Input", icon: "photo.on.rectangle", fill: true) {
                     DropZone(title: "Drop images", subtitle: "JPG, PNG, HEIC, TIFF, WebP and more", systemImage: "photo.on.rectangle",
-                             types: [.image]) { choose($0) }
+                             types: [.image], compact: !files.isEmpty,
+                             compactTitle: "Drop other images, or click to choose") { choose($0) }
                     if files.isEmpty {
                         VStack(alignment: .leading, spacing: 10) {
                             Text("What you can do").font(.mono(12, .semibold)).textCase(.uppercase).tracking(0.6)
@@ -153,22 +154,8 @@ struct ImagesView: View {
                         .padding(.top, 6)
                     } else {
                         if let previewImage {
-                            ZStack(alignment: .topTrailing) {
-                                Image(nsImage: previewImage).resizable().scaledToFit()
-                                    .frame(maxHeight: 280)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink.opacity(0.25), lineWidth: 1))
-                                if let first = files.first {
-                                    Button { remove(first) } label: { Image(systemName: "xmark") }
-                                        .buttonStyle(IconButtonStyle(size: 30))
-                                        .background(Circle().fill(Theme.card))
-                                        .padding(10)
-                                        .help("Remove this image")
-                                        .disabled(working)
-                                }
-                            }
-                            .frame(maxWidth: .infinity)
-                            .fixedSize(horizontal: false, vertical: true)
+                            PickedPreview(image: previewImage, maxHeight: 280,
+                                          onRemove: working || files.isEmpty ? nil : { remove(files[0]) })
                         }
                         VStack(alignment: .leading, spacing: 8) {
                             HStack {
