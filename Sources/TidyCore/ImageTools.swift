@@ -1,6 +1,7 @@
 import Foundation
 import ImageIO
 import CoreGraphics
+import CoreImage
 import UniformTypeIdentifiers
 
 public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
@@ -26,28 +27,61 @@ public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
     public var usesQuality: Bool { self != .png }
 }
 
-/// How an image's pixel size changes. Images are only ever made smaller, never enlarged.
+/// How an image's pixel size changes.
 public enum ResizeMode: Equatable, Sendable {
     case original
-    /// Fraction of the original size, 0.01 ... 1.0 (0.5 = half the width and height).
+    /// Fraction of the original size, 0.01 ... 4.0 (0.5 = half the width and height, 2 = double).
     case percent(Double)
     /// Fit inside a width / height box, keeping the shape. Either side may be nil (no limit).
     case fit(width: Int?, height: Int?)
 
+    /// Output is never made larger than this on its longest side (keeps memory and file size sane).
+    public static let maxOutputSide = 16_000
+    public static let maxPercent = 4.0
+
     /// The output size for an image of `width` x `height` pixels (after rotation is applied).
-    public func targetSize(width: Int, height: Int) -> (width: Int, height: Int) {
+    /// Without `allowEnlarge` the image is only ever made smaller.
+    public func targetSize(width: Int, height: Int, allowEnlarge: Bool = false) -> (width: Int, height: Int) {
         guard width > 0, height > 0 else { return (width, height) }
         var scale = 1.0
         switch self {
         case .original:
             break
         case .percent(let p):
-            scale = min(max(p, 0.01), 1.0)
+            scale = min(max(p, 0.01), Self.maxPercent)
         case .fit(let w, let h):
-            if let w, w > 0 { scale = min(scale, Double(w) / Double(width)) }
-            if let h, h > 0 { scale = min(scale, Double(h) / Double(height)) }
+            var limits: [Double] = []
+            if let w, w > 0 { limits.append(Double(w) / Double(width)) }
+            if let h, h > 0 { limits.append(Double(h) / Double(height)) }
+            if let tightest = limits.min() { scale = tightest }
         }
-        if scale >= 1 { return (width, height) }
+        if !allowEnlarge { scale = min(scale, 1) }
+        if scale > 1 {
+            // Cap the longest side; never shrink an image below its own size because of the cap.
+            scale = max(1, min(scale, Double(Self.maxOutputSide) / Double(max(width, height))))
+        }
+        if scale == 1 { return (width, height) }
+        return (max(1, Int((Double(width) * scale).rounded())), max(1, Int((Double(height) * scale).rounded())))
+    }
+
+    /// True when the size asked for is bigger than the 16,000 px limit allows.
+    public func isCapped(width: Int, height: Int, allowEnlarge: Bool) -> Bool {
+        guard allowEnlarge else { return false }
+        let wanted = uncappedSize(width: width, height: height)
+        return max(wanted.width, wanted.height) > Self.maxOutputSide
+    }
+
+    private func uncappedSize(width: Int, height: Int) -> (width: Int, height: Int) {
+        var scale = 1.0
+        switch self {
+        case .original: break
+        case .percent(let p): scale = min(max(p, 0.01), Self.maxPercent)
+        case .fit(let w, let h):
+            var limits: [Double] = []
+            if let w, w > 0 { limits.append(Double(w) / Double(width)) }
+            if let h, h > 0 { limits.append(Double(h) / Double(height)) }
+            if let tightest = limits.min() { scale = tightest }
+        }
         return (max(1, Int((Double(width) * scale).rounded())), max(1, Int((Double(height) * scale).rounded())))
     }
 }
@@ -60,6 +94,10 @@ public struct ImageOptions: Sendable {
     public var resize: ResizeMode
     /// Drops EXIF, GPS location and other metadata.
     public var stripMetadata: Bool
+    /// Lets the size grow past the original. Off, images only ever shrink.
+    public var allowEnlarge: Bool
+    /// Gently sharpens an enlarged image (enlarging makes pictures slightly soft).
+    public var sharpen: Bool
 
     /// Longest side in pixels (shortcut for a square `fit` box). nil keeps the original size.
     public var maxDimension: Int? {
@@ -68,11 +106,14 @@ public struct ImageOptions: Sendable {
     }
 
     public init(format: ImageFormat = .jpeg, quality: Double = 0.8, maxDimension: Int? = nil,
-                resize: ResizeMode? = nil, stripMetadata: Bool = false) {
+                resize: ResizeMode? = nil, stripMetadata: Bool = false,
+                allowEnlarge: Bool = false, sharpen: Bool = false) {
         self.format = format
         self.quality = quality
         self.resize = resize ?? maxDimension.map { .fit(width: $0, height: $0) } ?? .original
         self.stripMetadata = stripMetadata
+        self.allowEnlarge = allowEnlarge
+        self.sharpen = sharpen
     }
 }
 
@@ -108,20 +149,28 @@ public enum ImageTools {
 
         // Always decode through the thumbnail path so camera rotation is baked into the pixels
         // (needed when metadata is stripped) and resizing uses high-quality scaling.
-        let target = options.resize.targetSize(width: width, height: height)
+        let target = options.resize.targetSize(width: width, height: height, allowEnlarge: options.allowEnlarge)
+        let enlarging = target.width > width || target.height > height
+        // The decoder can only shrink, so when enlarging it decodes at full size and we scale up below.
+        let decodeSide = enlarging ? max(width, height) : max(target.width, target.height)
         let decodeOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: max(target.width, target.height),
+            kCGImageSourceThumbnailMaxPixelSize: decodeSide,
         ]
         guard var image = CGImageSourceCreateThumbnailAtIndex(src, 0, decodeOptions as CFDictionary) else {
             throw ImageToolsError.cannotRead(source.lastPathComponent)
         }
-        // The decoder fixes the longest side; nudge the other side so the size is exactly what was asked for.
-        if options.resize != .original, (image.width != target.width || image.height != target.height),
-           abs(image.width - target.width) <= 2, abs(image.height - target.height) <= 2,
-           let exact = redraw(image, width: target.width, height: target.height) {
+        if enlarging {
+            guard let bigger = upscale(image, toWidth: target.width, height: target.height, sharpen: options.sharpen) else {
+                throw ImageToolsError.cannotWrite(source.lastPathComponent)
+            }
+            image = bigger
+        } else if options.resize != .original, (image.width != target.width || image.height != target.height),
+                  abs(image.width - target.width) <= 2, abs(image.height - target.height) <= 2,
+                  let exact = redraw(image, width: target.width, height: target.height) {
+            // The decoder fixes the longest side; nudge the other side so the size is exactly what was asked for.
             image = exact
         }
         if options.format == .jpeg, hasAlpha(image) {
@@ -194,6 +243,30 @@ public enum ImageTools {
         ctx.interpolationQuality = .high
         ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         return ctx.makeImage()
+    }
+
+    /// High-quality (Lanczos) enlargement to an exact size, optionally followed by a light sharpen.
+    static func upscale(_ image: CGImage, toWidth w: Int, height h: Int, sharpen: Bool) -> CGImage? {
+        guard let filter = CIFilter(name: "CILanczosScaleTransform") else { return nil }
+        let sy = Double(h) / Double(image.height)
+        let sx = Double(w) / Double(image.width)
+        filter.setValue(CIImage(cgImage: image), forKey: kCIInputImageKey)
+        filter.setValue(sy, forKey: kCIInputScaleKey)
+        filter.setValue(sx / sy, forKey: kCIInputAspectRatioKey)
+        guard var out = filter.outputImage else { return nil }
+        let rect = CGRect(x: 0, y: 0, width: w, height: h)
+        out = out.cropped(to: rect)
+        if sharpen, let unsharp = CIFilter(name: "CIUnsharpMask") {
+            unsharp.setValue(out, forKey: kCIInputImageKey)
+            unsharp.setValue(min(3.0, max(1.0, max(sx, sy) * 0.8)), forKey: kCIInputRadiusKey)
+            unsharp.setValue(0.6, forKey: kCIInputIntensityKey)
+            if let sharpened = unsharp.outputImage { out = sharpened.cropped(to: rect) }
+        }
+        let space = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        let context = CIContext(options: [.workingColorSpace: space, .outputColorSpace: space])
+        guard let result = context.createCGImage(out, from: rect, format: .RGBA8, colorSpace: space) else { return nil }
+        // Keep opaque pictures opaque (Core Image always hands back an alpha channel).
+        return hasAlpha(image) ? result : (flattenOnWhite(result) ?? result)
     }
 
     static func hasAlpha(_ image: CGImage) -> Bool {

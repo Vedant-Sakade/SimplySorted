@@ -25,7 +25,7 @@ enum SidebarItem: String, CaseIterable, Identifiable {
         switch self {
         case .sort: "One click puts every loose file into its type folder, or let it run on a schedule. Nothing is overwritten, and you can undo."
         case .moveTo: "Keep favourite folders here. Drop files on one to send them there."
-        case .images: "Convert, shrink and resize photos. Originals are never touched."
+        case .images: "Convert, shrink, enlarge and resize photos. Originals are never touched."
         case .pdf: "Merge, split or shrink PDFs. Your original files are never changed."
         case .text: "Copy the text out of any screenshot or picture. Runs on your Mac."
         case .uninstall: "Remove an app and the files it left behind. Everything goes to the Trash first."

@@ -7,27 +7,71 @@ struct ImagesView: View {
     @State private var format: ImageFormat = .jpeg
     @State private var quality = 0.8
     @State private var sizeMode: SizeMode
-    @State private var percent = 50.0
+    @State private var percent: Double
+    @State private var enlarge = true        // Pixels mode: also grow images smaller than the box
+    @State private var sharpen = false
     @State private var widthText: String
     @State private var heightText = ""
     @State private var firstSize: (width: Int, height: Int)?
+    @State private var previewImage: NSImage?
 
-    /// The arguments only exist so the preview renderer can draw each size mode.
-    init(initialMode: SizeMode = .original) {
-        _sizeMode = State(initialValue: initialMode)
-        _widthText = State(initialValue: initialMode == .pixels ? "1920" : "")
-        _firstSize = State(initialValue: initialMode == .original ? nil : (4032, 3024))
-    }
     @State private var strip = false
     @State private var outputFolder: URL?
     @State private var results: [ImageResult] = []
     @State private var errors: [String] = []
     @State private var working = false
 
+    /// The arguments only exist so the preview renderer can draw each size mode.
+    init(initialMode: SizeMode = .original, percent: Double = 50, width: String? = nil,
+         sourceSize: (width: Int, height: Int) = (4032, 3024), sampleImage: URL? = nil) {
+        _sizeMode = State(initialValue: initialMode)
+        _percent = State(initialValue: percent)
+        _widthText = State(initialValue: width ?? (initialMode == .pixels ? "1920" : ""))
+        if let sampleImage {
+            _files = State(initialValue: [sampleImage])
+            _firstSize = State(initialValue: ImageTools.pixelSize(of: sampleImage))
+            _previewImage = State(initialValue: Self.thumbnail(of: sampleImage))
+        } else {
+            _firstSize = State(initialValue: initialMode == .original ? nil : sourceSize)
+        }
+    }
+
+    private func choose(_ urls: [URL]) {
+        files = urls; results = []; errors = []
+        firstSize = urls.first.flatMap { ImageTools.pixelSize(of: $0) }
+        previewImage = urls.first.flatMap { Self.thumbnail(of: $0) }
+    }
+
+    /// A small upright picture of the image for the Input card.
+    static func thumbnail(of url: URL, maxSide: Int = 640) -> NSImage? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        let options: [CFString: Any] = [kCGImageSourceCreateThumbnailFromImageAlways: true,
+                                        kCGImageSourceCreateThumbnailWithTransform: true,
+                                        kCGImageSourceThumbnailMaxPixelSize: maxSide]
+        guard let image = CGImageSourceCreateThumbnailAtIndex(src, 0, options as CFDictionary) else { return nil }
+        return NSImage(cgImage: image, size: NSSize(width: image.width, height: image.height))
+    }
+
+    private func fileLine(_ url: URL) -> String {
+        let size = ImageTools.pixelSize(of: url).map { "\($0.width) × \($0.height)" } ?? "unreadable"
+        let bytes = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize).map { formatBytes(Int64($0)) } ?? ""
+        return [size, bytes].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+
     enum SizeMode: Hashable { case original, percent, pixels }
 
-    private let quickSizes: [(Int, String)] = [(0, "Quick pick…"), (3840, "4K · 3840 px"), (2560, "2560 px"),
-                                               (1920, "Full HD · 1920 px"), (1280, "1280 px"), (800, "800 px")]
+    private let quickSizes: [(Int, String)] = [(0, "Quick pick…"), (7680, "8K · 7680 px"), (3840, "4K · 3840 px"),
+                                               (2560, "QHD · 2560 px"), (2048, "2K · 2048 px"), (1920, "Full HD · 1920 px"),
+                                               (1280, "1280 px"), (800, "800 px")]
+
+    /// Whether this setup can make pictures bigger than they are.
+    private var canEnlarge: Bool {
+        switch sizeMode {
+        case .original: false
+        case .percent: percent > 100
+        case .pixels: enlarge
+        }
+    }
 
     private var resizeMode: ResizeMode {
         switch sizeMode {
@@ -41,10 +85,29 @@ struct ImagesView: View {
     /// "4032 × 3024 → 2016 × 1512 px" for the first picked image, or nil when nothing changes.
     private var sizePreview: String? {
         guard let first = firstSize, resizeMode != .original else { return nil }
-        let out = resizeMode.targetSize(width: first.width, height: first.height)
+        let out = resizeMode.targetSize(width: first.width, height: first.height, allowEnlarge: canEnlarge)
         let more = files.count > 1 ? " (first of \(files.count))" : ""
         if out == first { return "\(first.width) × \(first.height) px stays the same" + more }
         return "\(first.width) × \(first.height) → \(out.width) × \(out.height) px" + more
+    }
+
+    /// Extra notes about enlarging: it is estimated, big results are heavy, and the 16,000 px limit.
+    private var enlargeNote: String? {
+        guard canEnlarge else { return nil }
+        var notes: [String] = []
+        if let first = firstSize {
+            let out = resizeMode.targetSize(width: first.width, height: first.height, allowEnlarge: true)
+            guard out.width > first.width || out.height > first.height else { return nil }
+            notes.append("Bigger, not sharper: new pixels are estimated from the old ones.")
+            let mp = Double(out.width * out.height) / 1_000_000
+            if resizeMode.isCapped(width: first.width, height: first.height, allowEnlarge: true) {
+                notes.append("Limited to \(ResizeMode.maxOutputSide.formatted()) px on the longest side.")
+            }
+            if mp >= 50 { notes.append(String(format: "About %.0f megapixels: this may take a moment and make a large file.", mp)) }
+        } else {
+            notes.append("Bigger, not sharper: new pixels are estimated from the old ones.")
+        }
+        return notes.joined(separator: " ")
     }
 
     private func digits(_ text: Binding<String>) -> Binding<String> {
@@ -53,14 +116,40 @@ struct ImagesView: View {
 
     var body: some View {
         PageScroll {
-            TwoColumns {
-                Card(title: "Input", icon: "photo.on.rectangle") {
+            TwoColumns(stretch: true) {
+                Card(title: "Input", icon: "photo.on.rectangle", fill: true) {
                     DropZone(title: "Drop images", subtitle: "JPG, PNG, HEIC, TIFF, WebP and more", systemImage: "photo.on.rectangle",
-                             types: [.image]) { files = $0; results = []; errors = []; firstSize = $0.first.flatMap { ImageTools.pixelSize(of: $0) } }
-                    if !files.isEmpty {
-                        Label("\(files.count) selected: \(files.prefix(3).map(\.lastPathComponent).joined(separator: ", "))\(files.count > 3 ? "…" : "")",
-                              systemImage: "checkmark.circle")
-                            .font(.mono(11)).foregroundStyle(Theme.mute).lineLimit(2)
+                             types: [.image]) { choose($0) }
+                    if files.isEmpty {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text("What you can do").font(.mono(12, .semibold)).textCase(.uppercase).tracking(0.6)
+                            Hint("Convert photos between JPEG, PNG and HEIC.")
+                            Hint("Shrink big photos for email and the web.")
+                            Hint("Enlarge small ones up to 2K, 4K or 8K.")
+                            Hint("Remove location and camera info before sharing.")
+                        }
+                        .padding(.top, 6)
+                    } else {
+                        if let previewImage {
+                            Image(nsImage: previewImage).resizable().scaledToFit()
+                                .frame(maxHeight: 280)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink.opacity(0.25), lineWidth: 1))
+                                .frame(maxWidth: .infinity)
+                        }
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("\(files.count) selected").font(.mono(12, .semibold)).textCase(.uppercase).tracking(0.6)
+                            ForEach(Array(files.prefix(5)), id: \.self) { url in
+                                HStack(spacing: 10) {
+                                    Image(systemName: "photo").font(.system(size: 12, weight: .light))
+                                    Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
+                                    Spacer(minLength: 8)
+                                    Text(fileLine(url)).foregroundStyle(Theme.mute).lineLimit(1)
+                                }
+                                .font(.mono(11))
+                            }
+                            if files.count > 5 { Hint("and \(files.count - 5) more") }
+                        }
                     }
                 }
             } right: {
@@ -79,7 +168,7 @@ struct ImagesView: View {
                     }
                     if sizeMode == .percent {
                         SettingRow(label: "Scale") {
-                            Slider(value: $percent, in: 10...100, step: 5).tint(Theme.ink).frame(maxWidth: 190)
+                            Slider(value: $percent, in: 10...400, step: 5).tint(Theme.ink).frame(maxWidth: 190)
                             Text("\(Int(percent))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
                         }
                     }
@@ -97,10 +186,21 @@ struct ImagesView: View {
                                        options: quickSizes, minWidth: 150)
                         }
                     }
+                    if sizeMode == .pixels {
+                        SettingRow(label: "Enlarge") {
+                            Toggle(isOn: $enlarge) { Text("Also grow smaller images").font(.mono(12)) }.toggleStyle(.pill)
+                        }
+                    }
+                    if canEnlarge {
+                        SettingRow(label: "Sharpen") {
+                            Toggle(isOn: $sharpen) { Text("Sharpen after enlarging").font(.mono(12)) }.toggleStyle(.pill)
+                        }
+                    }
                     if sizeMode != .original {
                         Hint(sizePreview ?? (sizeMode == .pixels
-                             ? "Type a width, a height, or both. The shape is kept and images are never enlarged."
-                             : "Pick a percentage. Images are never enlarged."))
+                             ? "Type a width, a height, or both. The shape is always kept."
+                             : "Pick a percentage. Above 100% the image is enlarged."))
+                        if let note = enlargeNote { Hint(note) }
                     }
                     SettingRow(label: "Privacy") {
                         Toggle(isOn: $strip) { Text("Remove location & camera info").font(.mono(12)) }.toggleStyle(.pill)
@@ -149,7 +249,8 @@ struct ImagesView: View {
 
     private func convert() {
         working = true; results = []; errors = []
-        let options = ImageOptions(format: format, quality: quality, resize: resizeMode, stripMetadata: strip)
+        let options = ImageOptions(format: format, quality: quality, resize: resizeMode, stripMetadata: strip,
+                                  allowEnlarge: canEnlarge, sharpen: sharpen && canEnlarge)
         let list = files, folder = outputFolder
         Task.detached {
             var done: [ImageResult] = [], failed: [String] = []

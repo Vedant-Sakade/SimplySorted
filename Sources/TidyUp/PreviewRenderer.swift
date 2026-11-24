@@ -34,9 +34,27 @@ enum PreviewRenderer {
 
     /// The Images tab with the Scale and Pixels size modes switched on.
     private static func renderImageModes(model: AppModel, to out: URL) {
-        for (mode, name) in [(ImagesView.SizeMode.percent, "images-scale"), (.pixels, "images-pixels")] {
+        // A sample picture so the Input card shows its preview.
+        let sample = FileManager.default.temporaryDirectory.appendingPathComponent("Holiday photo.png")
+        let art = NSImage(size: NSSize(width: 1448, height: 1086))
+        art.lockFocus()
+        NSGradient(colors: [NSColor(red: 0.95, green: 0.62, blue: 0.35, alpha: 1), NSColor(red: 0.25, green: 0.45, blue: 0.7, alpha: 1)])?
+            .draw(in: NSRect(x: 0, y: 0, width: 1448, height: 1086), angle: 60)
+        NSColor.white.withAlphaComponent(0.85).setFill(); NSBezierPath(ovalIn: NSRect(x: 980, y: 700, width: 220, height: 220)).fill()
+        art.unlockFocus()
+        if let tiff = art.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) { try? png.write(to: sample) }
+        defer { try? FileManager.default.removeItem(at: sample) }
+        let cases: [(String, ImagesView)] = [
+            ("images-loaded", ImagesView(initialMode: .pixels, width: "2048", sampleImage: sample)),
+            ("images-scale", ImagesView(initialMode: .percent)),
+            ("images-pixels", ImagesView(initialMode: .pixels)),
+            ("images-enlarge-scale", ImagesView(initialMode: .percent, percent: 200, sourceSize: (1448, 1086))),
+            ("images-enlarge-pixels", ImagesView(initialMode: .pixels, width: "2048", sourceSize: (1448, 1086))),
+            ("images-enlarge-huge", ImagesView(initialMode: .percent, percent: 400, sourceSize: (6000, 4000))),
+        ]
+        for (name, imagesView) in cases {
             for scheme in [ColorScheme.light, .dark] {
-                let page = ImagesView(initialMode: mode)
+                let page = imagesView
                     .padding(36)
                     .font(.mono(14)).foregroundStyle(Theme.ink)
                     .environment(model).environment(\.colorScheme, scheme).environment(\.previewMode, true)

@@ -195,6 +195,112 @@ final class ToolsTests: XCTestCase {
         XCTAssertGreaterThan(out.1, out.0, "the photo is still taller than it is wide")
     }
 
+    // MARK: Enlarging
+
+    func testEnlargeMath() {
+        typealias R = ResizeMode
+        XCTAssertTrue(R.percent(2).targetSize(width: 1000, height: 500, allowEnlarge: true) == (2000, 1000))
+        XCTAssertTrue(R.percent(2).targetSize(width: 1000, height: 500) == (1000, 500), "without allowEnlarge nothing grows")
+        XCTAssertTrue(R.percent(10).targetSize(width: 100, height: 100, allowEnlarge: true) == (400, 400), "percent tops out at 400%")
+        XCTAssertTrue(R.fit(width: 2048, height: nil).targetSize(width: 1448, height: 1086, allowEnlarge: true) == (2048, 1536))
+        XCTAssertTrue(R.fit(width: 2048, height: 2048).targetSize(width: 1000, height: 500, allowEnlarge: true) == (2048, 1024), "a square box means longest side")
+        XCTAssertTrue(R.fit(width: 4000, height: 600).targetSize(width: 1000, height: 500, allowEnlarge: true) == (1200, 600), "tighter side wins when enlarging too")
+        XCTAssertTrue(R.fit(width: 2048, height: 2048).targetSize(width: 3000, height: 1000, allowEnlarge: true) == (2048, 683), "a bigger image still shrinks")
+        XCTAssertTrue(R.fit(width: nil, height: nil).targetSize(width: 400, height: 300, allowEnlarge: true) == (400, 300))
+        XCTAssertTrue(R.original.targetSize(width: 400, height: 300, allowEnlarge: true) == (400, 300))
+    }
+
+    func testEnlargeIsCappedAt16000() {
+        let t = ResizeMode.fit(width: 40_000, height: nil).targetSize(width: 4000, height: 2000, allowEnlarge: true)
+        XCTAssertEqual(t.width, ResizeMode.maxOutputSide)
+        XCTAssertEqual(t.height, ResizeMode.maxOutputSide / 2)
+        XCTAssertTrue(ResizeMode.fit(width: 40_000, height: nil).isCapped(width: 4000, height: 2000, allowEnlarge: true))
+        XCTAssertFalse(ResizeMode.fit(width: 8000, height: nil).isCapped(width: 4000, height: 2000, allowEnlarge: true))
+        XCTAssertFalse(ResizeMode.fit(width: 40_000, height: nil).isCapped(width: 4000, height: 2000, allowEnlarge: false))
+        // An image already larger than the cap is never shrunk because of it.
+        let big = ResizeMode.percent(2).targetSize(width: 20_000, height: 10_000, allowEnlarge: true)
+        XCTAssertTrue(big == (20_000, 10_000))
+    }
+
+    func testEnlargeToExactWidthForEachFormat() throws {
+        let png = try makePNG("small.png", size: CGSize(width: 300, height: 200))
+        let src = pixelSize(png)
+        let want = src.0 * 2 + 7   // awkward on purpose
+        for format in [ImageFormat.png, .jpeg, .heic] {
+            let r = try ImageTools.convert(png, options: ImageOptions(format: format, resize: .fit(width: want, height: nil), allowEnlarge: true))
+            let out = pixelSize(r.output)
+            XCTAssertEqual(out.0, want, "\(format) width")
+            XCTAssertEqual(Double(out.1), Double(src.1) * Double(want) / Double(src.0), accuracy: 1, "\(format) keeps the shape")
+        }
+        XCTAssertEqual(pixelSize(png).0, src.0, "original untouched")
+    }
+
+    func testEnlargeByPercentDoublesSize() throws {
+        let png = try makePNG("dbl.png", size: CGSize(width: 240, height: 120))
+        let src = pixelSize(png)
+        let r = try ImageTools.convert(png, options: ImageOptions(format: .png, resize: .percent(2), allowEnlarge: true))
+        let out = pixelSize(r.output)
+        XCTAssertEqual(out.0, src.0 * 2)
+        XCTAssertEqual(out.1, src.1 * 2)
+    }
+
+    func testEnlargeOffKeepsImagesSmall() throws {
+        let png = try makePNG("keep.png", size: CGSize(width: 240, height: 120))
+        let src = pixelSize(png)
+        let r = try ImageTools.convert(png, options: ImageOptions(format: .png, resize: .fit(width: 5000, height: nil), allowEnlarge: false))
+        XCTAssertEqual(pixelSize(r.output).0, src.0, "Also grow smaller images switched off: stays the same size")
+    }
+
+    func testEnlargedOpaqueImageStaysOpaqueAndTransparentKeepsAlpha() throws {
+        // A photo (JPEG) has no transparency to begin with.
+        let opaque = try ImageTools.convert(try makePNG("op.png", size: CGSize(width: 120, height: 80)), options: ImageOptions(format: .jpeg)).output
+        let o = try ImageTools.convert(opaque, options: ImageOptions(format: .png, resize: .percent(2), allowEnlarge: true))
+        let oImg = try XCTUnwrap(CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(o.output as CFURL, nil)!, 0, nil))
+        XCTAssertFalse(ImageTools.hasAlpha(oImg), "an opaque picture must not gain an alpha channel")
+
+        let clear = try makePNG("tr.png", size: CGSize(width: 120, height: 80), transparent: true)
+        let t = try ImageTools.convert(clear, options: ImageOptions(format: .png, resize: .percent(2), allowEnlarge: true))
+        let tImg = try XCTUnwrap(CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(t.output as CFURL, nil)!, 0, nil))
+        XCTAssertTrue(ImageTools.hasAlpha(tImg), "transparency survives enlarging")
+    }
+
+    /// A realistic big job: a 1448 x 1086 picture (like a screenshot or AI image) enlarged to 8K.
+    func testEnlargeToEightKIsExactAndReasonablyFast() throws {
+        let png = try makePNG("shot.png", size: CGSize(width: 724, height: 543))   // 1448 x 1086 on a Retina Mac
+        let src = pixelSize(png)
+        let start = Date()
+        let r = try ImageTools.convert(png, options: ImageOptions(format: .jpeg, quality: 0.9, resize: .fit(width: 7680, height: nil), allowEnlarge: true, sharpen: true))
+        let seconds = Date().timeIntervalSince(start)
+        let out = pixelSize(r.output)
+        XCTAssertEqual(out.0, 7680)
+        XCTAssertEqual(Double(out.1), Double(src.1) * 7680 / Double(src.0), accuracy: 1)
+        XCTAssertLessThan(seconds, 20, "an 8K enlarge should take seconds, not minutes (took \(seconds)s)")
+        print("8K enlarge took \(String(format: "%.2f", seconds))s, output \(r.outputBytes) bytes")
+    }
+
+    func testSharpenChangesTheEnlargedPicture() throws {
+        let png = try makePNG("sharp.png", size: CGSize(width: 160, height: 100), text: "Aa")
+        let plain = try ImageTools.convert(png, options: ImageOptions(format: .png, resize: .percent(3), allowEnlarge: true, sharpen: false))
+        let sharp = try ImageTools.convert(png, options: ImageOptions(format: .png, resize: .percent(3), allowEnlarge: true, sharpen: true))
+        XCTAssertEqual(pixelSize(plain.output).0, pixelSize(sharp.output).0, "same size either way")
+        XCTAssertNotEqual(try Data(contentsOf: plain.output), try Data(contentsOf: sharp.output), "sharpening must change the pixels")
+    }
+
+    func testEnlargeUsesUprightSizeOfSidewaysPhoto() throws {
+        let png = try makePNG("side-src2.png", size: CGSize(width: 300, height: 150))
+        let srcImage = try XCTUnwrap(CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(png as CFURL, nil)!, 0, nil))
+        let jpg = dir.appendingPathComponent("side2.jpg")
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithURL(jpg as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, srcImage, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+        let shown = try XCTUnwrap(ImageTools.pixelSize(of: jpg))
+        let r = try ImageTools.convert(jpg, options: ImageOptions(format: .jpeg, resize: .fit(width: shown.width * 2, height: nil), allowEnlarge: true))
+        let out = pixelSize(r.output)
+        XCTAssertEqual(out.0, shown.width * 2)
+        XCTAssertEqual(out.1, shown.height * 2)
+        XCTAssertGreaterThan(out.1, out.0, "still upright (taller than wide)")
+    }
+
     func testRecompressSameFormatDoesNotOverwriteOriginal() throws {
         let png = try makePNG("p.png")
         let jpg = try ImageTools.convert(png, options: ImageOptions(format: .jpeg)).output
