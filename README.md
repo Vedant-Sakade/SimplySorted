@@ -84,7 +84,7 @@ Downloads and Desktop fill up with screenshots, PDFs, installers, zips and files
 ### Always know what is happening
 
 - **Progress.** Sorting, moving, converting and compressing show a progress bar ("Converting 3 of 12…"), and batches have a **Cancel** button. A single small picture finishes in a blink, so you will mostly see the bar on batches.
-- **Done.** When a job finishes cleanly the button turns into a green **Done** tick for a moment, and the Images tab shows a **Result** card with the saved size.
+- **Done.** When a job finishes cleanly the button turns into a **Done** tick for a moment, and the Images tab shows a **Result** card with the saved size.
 - **Fix a wrong pick.** Every picked file has a cross to take it out again, and there is a **Clear all** button.
 - **Tabs remember.** Switching tabs no longer loses a picked image or a running job.
 

@@ -9,7 +9,6 @@ enum Theme {
     static let ink = Color(light: 0x1A1F1B, dark: 0xE6EDE2)
     static let mute = Color(light: 0x5C655D, dark: 0x93A092)
     static let warn = Color(light: 0xB4521E, dark: 0xE08A52)
-    static let good = Color(light: 0x2F6B3B, dark: 0x7FC48C)
     static let radius: CGFloat = 26
 }
 

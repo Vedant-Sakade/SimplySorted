@@ -26,7 +26,7 @@ final class AppModel {
     var isWorking = false
     /// Files handled so far while sorting or moving (nil until the total is known).
     var progress: (done: Int, total: Int)?
-    /// True for a couple of seconds after a sort or move finished without problems (drives the green Done tick).
+    /// True for a couple of seconds after a sort or move finished without problems (drives the Done tick).
     var justFinished = false
     private var finishToken = 0
     var appearance: Appearance = .light
@@ -173,7 +173,7 @@ final class AppModel {
         }
     }
 
-    /// Shows the green Done tick for a moment (only if nothing newer finished meanwhile).
+    /// Shows the Done tick for a moment (only if nothing newer finished meanwhile).
     private func flashDone() {
         justFinished = true
         finishToken += 1

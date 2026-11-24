@@ -253,6 +253,8 @@ struct Card<Content: View>: View {
             }
             content
         }
+        // When the card stretches, its content stretches too, so a Spacer can pin a button to the bottom edge.
+        .frame(maxHeight: fill ? .infinity : nil, alignment: .top)
         .padding(22)
         .frame(maxWidth: .infinity, maxHeight: fill ? .infinity : nil, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: Theme.radius, style: .continuous).fill(Theme.card))
@@ -569,7 +571,7 @@ struct WorkProgress: View {
     }
 }
 
-/// Green "Done" pill with a tick that stands in for the action button for a moment after it finishes.
+/// Black "Done" pill with a tick that stands in for the action button for a moment after it finishes.
 struct DonePill: View {
     var title = "Done"
     @State private var bounce = false
@@ -579,7 +581,7 @@ struct DonePill: View {
             .font(.mono(13, .semibold)).textCase(.uppercase).tracking(0.6)
             .foregroundStyle(Theme.bg)
             .frame(maxWidth: .infinity).padding(.vertical, 14)
-            .background(Capsule().fill(Theme.good))
+            .background(Capsule().fill(Theme.ink))
             .symbolEffect(.bounce, value: bounce)
             .onAppear { bounce.toggle() }
     }

@@ -53,7 +53,7 @@ struct UninstallerView: View {
                             Label(removedNote, systemImage: "checkmark.circle.fill")
                                 .font(.mono(13, .semibold)).foregroundStyle(Theme.bg)
                                 .padding(.horizontal, 16).padding(.vertical, 12)
-                                .background(Capsule().fill(Theme.good))
+                                .background(Capsule().fill(Theme.ink))
                                 .padding(.bottom, 10)
                         }
                         Image(systemName: "trash").font(.system(size: 30, weight: .light)).frame(width: 70, height: 70)

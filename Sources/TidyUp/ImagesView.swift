@@ -209,7 +209,7 @@ struct ImagesView: View {
                     }
                     if sizeMode == .percent {
                         SettingRow(label: "Scale") {
-                            Slider(value: $percent, in: 10...400, step: 5).tint(Theme.ink).frame(maxWidth: 190)
+                            Slider(value: Binding(get: { percent }, set: { percent = ($0 / 5).rounded() * 5 }), in: 10...400).tint(Theme.ink).frame(maxWidth: 190)
                             Text("\(Int(percent))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
                         }
                     }
@@ -255,6 +255,7 @@ struct ImagesView: View {
                                 .buttonStyle(IconButtonStyle(size: 26))
                         }
                     }
+                    Spacer(minLength: 0)
                     convertArea
                     if files.isEmpty { Hint("Drop or choose some images first.") }
                 }
@@ -296,7 +297,7 @@ struct ImagesView: View {
         return Card(title: "Result", icon: "checkmark.circle") {
             HStack(spacing: 14) {
                 Image(systemName: icon).font(.system(size: 36, weight: .light))
-                    .foregroundStyle(allGood ? Theme.good : Theme.warn)
+                    .foregroundStyle(allGood ? Theme.ink : Theme.warn)
                     .symbolEffect(.bounce, value: results.count)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(title).font(.mono(20, .semibold))
@@ -307,7 +308,7 @@ struct ImagesView: View {
                 HairlineDivider()
                 ForEach(results, id: \.output) { r in
                     HStack(spacing: 10) {
-                        Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.good)
+                        Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.ink)
                         Text(r.output.lastPathComponent).lineLimit(1)
                         Spacer()
                         Text("\(formatBytes(r.inputBytes)) → \(formatBytes(r.outputBytes))").foregroundStyle(Theme.mute)
