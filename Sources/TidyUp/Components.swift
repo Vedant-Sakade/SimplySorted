@@ -287,17 +287,30 @@ extension EnvironmentValues {
 /// A ScrollView that steps aside in preview mode.
 struct AdaptiveScroll<Content: View>: View {
     @Environment(\.previewMode) private var previewMode
+    /// Scrolls the view with this id into sight whenever `tick` changes.
+    var scrollTo: (id: String, tick: Int)? = nil
     @ViewBuilder var content: Content
     var body: some View {
-        if previewMode { content } else { ScrollView { content }.scrollIndicators(.hidden) }
+        if previewMode {
+            content
+        } else {
+            ScrollViewReader { proxy in
+                ScrollView { content }
+                    .scrollIndicators(.hidden)
+                    .onChange(of: scrollTo?.tick) { _, _ in
+                        if let id = scrollTo?.id { withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo(id, anchor: .bottom) } }
+                    }
+            }
+        }
     }
 }
 
 /// Scrollable page body shared by every section.
 struct PageScroll<Content: View>: View {
+    var scrollTo: (id: String, tick: Int)? = nil
     @ViewBuilder var content: Content
     var body: some View {
-        AdaptiveScroll {
+        AdaptiveScroll(scrollTo: scrollTo) {
             VStack(spacing: 20) { content }
                 .padding(.top, 22).padding(.bottom, 32)
         }
@@ -503,4 +516,71 @@ struct SettingRow<Control: View>: View {
 
 struct HairlineDivider: View {
     var body: some View { Rectangle().fill(Theme.ink.opacity(0.18)).frame(height: 1) }
+}
+
+
+/// Thin outlined progress bar. `fraction` 0...1, or nil for "working, no idea how long".
+struct ProgressBar: View {
+    var fraction: Double?
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Theme.ink.opacity(0.08))
+                if let fraction {
+                    Capsule().fill(Theme.ink)
+                        .frame(width: max(14, geo.size.width * min(max(fraction, 0), 1)))
+                        .animation(.easeOut(duration: 0.25), value: fraction)
+                } else {
+                    TimelineView(.animation) { context in
+                        let phase = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.4) / 1.4
+                        Capsule().fill(Theme.ink)
+                            .frame(width: geo.size.width * 0.3)
+                            .offset(x: geo.size.width * 0.7 * abs(sin(phase * .pi)))
+                    }
+                }
+            }
+            .clipShape(Capsule())
+            .overlay(Capsule().stroke(Theme.ink, lineWidth: 1.2))
+        }
+        .frame(height: 14)
+    }
+}
+
+/// "Converting 3 of 12…" with a bar and an optional Cancel button. `fraction` nil = no known length.
+struct WorkProgress: View {
+    var title: String
+    var fraction: Double?
+    var onCancel: (() -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(title).font(.mono(13, .semibold))
+                Spacer()
+                if let onCancel {
+                    Button(action: onCancel) { Label("Cancel", systemImage: "xmark") }
+                        .buttonStyle(.pill(.outlined, compact: true))
+                }
+            }
+            ProgressBar(fraction: fraction)
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+/// Green "Done" pill with a tick that stands in for the action button for a moment after it finishes.
+struct DonePill: View {
+    var title = "Done"
+    @State private var bounce = false
+
+    var body: some View {
+        Label(title, systemImage: "checkmark.circle.fill")
+            .font(.mono(13, .semibold)).textCase(.uppercase).tracking(0.6)
+            .foregroundStyle(Theme.bg)
+            .frame(maxWidth: .infinity).padding(.vertical, 14)
+            .background(Capsule().fill(Theme.good))
+            .symbolEffect(.bounce, value: bounce)
+            .onAppear { bounce.toggle() }
+    }
 }

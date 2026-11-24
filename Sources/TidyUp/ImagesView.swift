@@ -20,10 +20,18 @@ struct ImagesView: View {
     @State private var results: [ImageResult] = []
     @State private var errors: [String] = []
     @State private var working = false
+    @State private var progressDone = 0
+    @State private var progressTotal = 0
+    @State private var cancelled = false
+    @State private var justDone = false          // the button shows "Done" for a couple of seconds
+    @State private var scrollTick = 0
+    @State private var job: Task<Void, Never>?
 
     /// The arguments only exist so the preview renderer can draw each size mode.
+    enum DemoState { case working(done: Int, total: Int), finished }
+
     init(initialMode: SizeMode = .original, percent: Double = 50, width: String? = nil,
-         sourceSize: (width: Int, height: Int) = (4032, 3024), sampleImage: URL? = nil) {
+         sourceSize: (width: Int, height: Int) = (4032, 3024), sampleImage: URL? = nil, demo: DemoState? = nil) {
         _sizeMode = State(initialValue: initialMode)
         _percent = State(initialValue: percent)
         _widthText = State(initialValue: width ?? (initialMode == .pixels ? "1920" : ""))
@@ -34,13 +42,27 @@ struct ImagesView: View {
         } else {
             _firstSize = State(initialValue: initialMode == .original ? nil : sourceSize)
         }
+        switch demo {
+        case .working(let done, let total)?:
+            _working = State(initialValue: true); _progressDone = State(initialValue: done); _progressTotal = State(initialValue: total)
+        case .finished?:
+            let a = URL(fileURLWithPath: "/demo/Holiday photo.jpg"), b = URL(fileURLWithPath: "/demo/Beach.jpg")
+            _results = State(initialValue: [
+                ImageResult(source: URL(fileURLWithPath: "/demo/Holiday photo.png"), output: a, inputBytes: 2_240_000, outputBytes: 612_000),
+                ImageResult(source: URL(fileURLWithPath: "/demo/Beach.png"), output: b, inputBytes: 3_900_000, outputBytes: 1_020_000)])
+            _justDone = State(initialValue: true)
+        case nil: break
+        }
     }
 
+    /// Takes the pictures at `urls` as the new selection (or an empty one).
     private func choose(_ urls: [URL]) {
-        files = urls; results = []; errors = []
+        files = urls; results = []; errors = []; cancelled = false; justDone = false
         firstSize = urls.first.flatMap { ImageTools.pixelSize(of: $0) }
         previewImage = urls.first.flatMap { Self.thumbnail(of: $0) }
     }
+
+    private func remove(_ url: URL) { choose(files.filter { $0 != url }) }
 
     /// A small upright picture of the image for the Input card.
     static func thumbnail(of url: URL, maxSide: Int = 640) -> NSImage? {
@@ -115,7 +137,7 @@ struct ImagesView: View {
     }
 
     var body: some View {
-        PageScroll {
+        PageScroll(scrollTo: (id: "result", tick: scrollTick)) {
             TwoColumns(stretch: true) {
                 Card(title: "Input", icon: "photo.on.rectangle", fill: true) {
                     DropZone(title: "Drop images", subtitle: "JPG, PNG, HEIC, TIFF, WebP and more", systemImage: "photo.on.rectangle",
@@ -131,20 +153,39 @@ struct ImagesView: View {
                         .padding(.top, 6)
                     } else {
                         if let previewImage {
-                            Image(nsImage: previewImage).resizable().scaledToFit()
-                                .frame(maxHeight: 280)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink.opacity(0.25), lineWidth: 1))
-                                .frame(maxWidth: .infinity)
+                            ZStack(alignment: .topTrailing) {
+                                Image(nsImage: previewImage).resizable().scaledToFit()
+                                    .frame(maxHeight: 280)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.ink.opacity(0.25), lineWidth: 1))
+                                if let first = files.first {
+                                    Button { remove(first) } label: { Image(systemName: "xmark") }
+                                        .buttonStyle(IconButtonStyle(size: 30))
+                                        .background(Circle().fill(Theme.card))
+                                        .padding(10)
+                                        .help("Remove this image")
+                                        .disabled(working)
+                                }
+                            }
+                            .frame(maxWidth: .infinity)
+                            .fixedSize(horizontal: false, vertical: true)
                         }
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("\(files.count) selected").font(.mono(12, .semibold)).textCase(.uppercase).tracking(0.6)
+                            HStack {
+                                Text("\(files.count) selected").font(.mono(12, .semibold)).textCase(.uppercase).tracking(0.6)
+                                Spacer()
+                                Button { choose([]) } label: { Label("Clear all", systemImage: "xmark.circle") }
+                                    .buttonStyle(.pill(.outlined, compact: true)).disabled(working)
+                            }
                             ForEach(Array(files.prefix(5)), id: \.self) { url in
                                 HStack(spacing: 10) {
                                     Image(systemName: "photo").font(.system(size: 12, weight: .light))
                                     Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle)
                                     Spacer(minLength: 8)
                                     Text(fileLine(url)).foregroundStyle(Theme.mute).lineLimit(1)
+                                    Button { remove(url) } label: { Image(systemName: "xmark") }
+                                        .buttonStyle(IconButtonStyle(size: 20)).help("Remove \(url.lastPathComponent)")
+                                        .disabled(working)
                                 }
                                 .font(.mono(11))
                             }
@@ -153,7 +194,7 @@ struct ImagesView: View {
                     }
                 }
             } right: {
-                Card(title: "Settings", icon: "slider.horizontal.3") {
+                Card(title: "Settings", icon: "slider.horizontal.3", fill: true) {
                     SettingRow(label: "Format") {
                         PillSegmented(selection: $format, options: ImageFormat.allCases.map { ($0, $0.title) })
                     }
@@ -214,51 +255,99 @@ struct ImagesView: View {
                                 .buttonStyle(IconButtonStyle(size: 26))
                         }
                     }
-                    Button { convert() } label: {
-                        Label(working ? "Working…" : "Convert", systemImage: "wand.and.stars").frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.pill(.filled))
-                    .disabled(files.isEmpty || working)
+                    convertArea
                     if files.isEmpty { Hint("Drop or choose some images first.") }
                 }
             }
 
-            if !results.isEmpty || !errors.isEmpty {
-                Card(title: "Result", icon: "checkmark.circle") {
-                    if !results.isEmpty {
-                        let before = results.reduce(0) { $0 + $1.inputBytes }, after = results.reduce(0) { $0 + $1.outputBytes }
-                        Text("\(results.count) converted · \(formatBytes(before)) → \(formatBytes(after))").font(.mono(16, .medium))
-                        ForEach(results, id: \.output) { r in
-                            HStack(spacing: 10) {
-                                Image(systemName: "photo").font(.system(size: 13, weight: .light))
-                                Text(r.output.lastPathComponent).lineLimit(1)
-                                Spacer()
-                                Text("\(formatBytes(r.inputBytes)) → \(formatBytes(r.outputBytes))").foregroundStyle(Theme.mute)
-                                Button { NSWorkspace.shared.activateFileViewerSelecting([r.output]) } label: { Image(systemName: "magnifyingglass") }
-                                    .buttonStyle(IconButtonStyle(size: 24)).help("Show in Finder")
-                            }
-                            .font(.mono(12))
-                            HairlineDivider()
-                        }
-                    }
-                    ForEach(errors, id: \.self) { StatusLine(text: $0, isError: true) }
-                }
+            if !working, !results.isEmpty || !errors.isEmpty {
+                resultCard.id("result")
             }
         }
     }
 
+    // MARK: Convert button, progress and result
+
+    @ViewBuilder private var convertArea: some View {
+        if working {
+            WorkProgress(title: progressTotal > 1 ? "Converting \(min(progressDone + 1, progressTotal)) of \(progressTotal)…" : "Converting…",
+                         fraction: progressTotal > 1 ? Double(progressDone) / Double(progressTotal) : nil,
+                         onCancel: progressTotal > 1 ? { job?.cancel() } : nil)
+        } else if justDone {
+            DonePill()
+        } else {
+            Button { convert() } label: {
+                Label("Convert", systemImage: "wand.and.stars").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.pill(.filled))
+            .disabled(files.isEmpty)
+        }
+    }
+
+    private var resultCard: some View {
+        let before = results.reduce(0) { $0 + $1.inputBytes }, after = results.reduce(0) { $0 + $1.outputBytes }
+        let allGood = errors.isEmpty && !cancelled && !results.isEmpty
+        let icon = allGood ? "checkmark.circle.fill" : (results.isEmpty && !cancelled ? "xmark.circle" : "exclamationmark.triangle")
+        let title = allGood ? "Done" : (cancelled ? "Cancelled" : (results.isEmpty ? "Nothing converted" : "Done, with problems"))
+        var detail: [String] = []
+        if !results.isEmpty { detail.append("\(results.count) converted · \(formatBytes(before)) → \(formatBytes(after))") }
+        if !errors.isEmpty { detail.append("\(errors.count) failed") }
+        if cancelled { detail.append("stopped after \(progressDone) of \(progressTotal)") }
+        return Card(title: "Result", icon: "checkmark.circle") {
+            HStack(spacing: 14) {
+                Image(systemName: icon).font(.system(size: 36, weight: .light))
+                    .foregroundStyle(allGood ? Theme.good : Theme.warn)
+                    .symbolEffect(.bounce, value: results.count)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(title).font(.mono(20, .semibold))
+                    Text(detail.joined(separator: " · ")).font(.mono(12)).foregroundStyle(Theme.mute)
+                }
+            }
+            if !results.isEmpty {
+                HairlineDivider()
+                ForEach(results, id: \.output) { r in
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark").font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.good)
+                        Text(r.output.lastPathComponent).lineLimit(1)
+                        Spacer()
+                        Text("\(formatBytes(r.inputBytes)) → \(formatBytes(r.outputBytes))").foregroundStyle(Theme.mute)
+                        Button { NSWorkspace.shared.activateFileViewerSelecting([r.output]) } label: { Image(systemName: "magnifyingglass") }
+                            .buttonStyle(IconButtonStyle(size: 24)).help("Show in Finder")
+                    }
+                    .font(.mono(12))
+                    HairlineDivider()
+                }
+            }
+            ForEach(errors, id: \.self) { StatusLine(text: $0, isError: true) }
+        }
+    }
+
     private func convert() {
-        working = true; results = []; errors = []
+        working = true; results = []; errors = []; cancelled = false; justDone = false
+        progressDone = 0; progressTotal = files.count
         let options = ImageOptions(format: format, quality: quality, resize: resizeMode, stripMetadata: strip,
                                   allowEnlarge: canEnlarge, sharpen: sharpen && canEnlarge)
         let list = files, folder = outputFolder
-        Task.detached {
-            var done: [ImageResult] = [], failed: [String] = []
-            for file in list {
-                do { done.append(try ImageTools.convert(file, options: options, outputFolder: folder)) }
-                catch { failed.append(error.localizedDescription) }
+        let started = Date()
+        job = Task.detached(priority: .userInitiated) {
+            let outcome = ImageTools.convertBatch(list, options: options, outputFolder: folder,
+                                                  isCancelled: { Task.isCancelled },
+                                                  progress: { completed, _ in DispatchQueue.main.async { progressDone = completed } })
+            // A single small picture finishes in a blink; keep the progress visible long enough to be seen.
+            let elapsed = Date().timeIntervalSince(started)
+            if elapsed < 0.6, !outcome.cancelled { try? await Task.sleep(nanoseconds: UInt64((0.6 - elapsed) * 1_000_000_000)) }
+            let tick = await MainActor.run { () -> Int in
+                results = outcome.results; errors = outcome.errors; cancelled = outcome.cancelled
+                progressDone = outcome.completed
+                working = false; job = nil
+                justDone = !outcome.results.isEmpty && outcome.errors.isEmpty && !outcome.cancelled
+                scrollTick += 1
+                return scrollTick
             }
-            await MainActor.run { [done, failed] in results = done; errors = failed; working = false }
+            if await MainActor.run(body: { justDone }) {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                await MainActor.run { if scrollTick == tick { justDone = false } }   // not if a newer run finished meanwhile
+            }
         }
     }
 }

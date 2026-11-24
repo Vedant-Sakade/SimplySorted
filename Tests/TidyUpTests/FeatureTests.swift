@@ -185,9 +185,43 @@ final class FeatureTests: XCTestCase {
         XCTAssertNotNil(model.nextScheduledRun)
     }
 
+    // MARK: Progress and Done
+
+    func testSortShowsDoneTickAfterCleanRunButNotWhenFilesFail() async throws {
+        try touch("a.jpg"); try touch("b.pdf"); try touch("c.zip")
+        let model = makeModel()
+        model.refresh()
+        await until("planned") { model.pendingCount == 3 }
+        model.sortNow()
+        await until("sorted") { model.lastRun != nil && !model.isWorking }
+        XCTAssertTrue(model.justFinished, "clean sort shows Done")
+        XCTAssertNil(model.progress)
+    }
+
+    func testMovingNothingDoesNotShowDone() async throws {
+        let dest = root.appendingPathComponent("Dest")
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        let model = makeModel()
+        model.move([root.appendingPathComponent("does-not-exist.txt")], to: dest)
+        await until("finished") { !model.isWorking && model.message != nil }
+        XCTAssertFalse(model.justFinished, "nothing moved, so no Done tick")
+        XCTAssertNotNil(model.message)
+    }
+
+    func testAnotherJobIsRefusedWhileOneRuns() async throws {
+        let dest = root.appendingPathComponent("Dest2")
+        try fm.createDirectory(at: dest, withIntermediateDirectories: true)
+        try touch("one.txt")
+        let model = makeModel()
+        model.move([inbox.appendingPathComponent("one.txt")], to: dest)
+        model.move([inbox.appendingPathComponent("one.txt")], to: dest)   // second call while the first runs
+        XCTAssertEqual(model.message, "Please wait, another job is still running.")
+        await until("first done") { !model.isWorking }
+    }
+
     // MARK: Move to…
 
-    func testMoveToFavouriteAndUndo() throws {
+    func testMoveToFavouriteAndUndo() async throws {
         let dest = root.appendingPathComponent("Clients/Joyzen")
         try fm.createDirectory(at: dest, withIntermediateDirectories: true)
         try touch("logo.ai")
@@ -197,9 +231,12 @@ final class FeatureTests: XCTestCase {
         XCTAssertEqual(model.favorites.count, 1)
 
         model.move([inbox.appendingPathComponent("logo.ai")], to: dest)
+        XCTAssertTrue(model.isWorking, "moving runs in the background so the window never freezes")
+        await until("moved") { model.message == "Moved 1 item to Joyzen." && !model.isWorking }
         XCTAssertTrue(exists("Clients/Joyzen/logo.ai"))
-        XCTAssertEqual(model.message, "Moved 1 item to Joyzen.")
         XCTAssertEqual(model.undoLabel, "Undo last move")
+        XCTAssertTrue(model.justFinished, "a clean move shows the green Done tick")
+        XCTAssertNil(model.progress, "progress is cleared when the job ends")
 
         model.removeFavorite(dest.path)
         XCTAssertTrue(model.favorites.isEmpty)

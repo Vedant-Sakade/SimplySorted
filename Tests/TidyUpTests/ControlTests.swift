@@ -190,4 +190,17 @@ final class ControlTests: XCTestCase {
             XCTAssertEqual(Set(heights.values).count, 1, "header heights differ at width \(width): \(heights)")
         }
     }
+
+    func testStatusMessageDoesNotFollowYouToAnotherTab() {
+        let suite = "tidyup-tab-test-\(UUID().uuidString)"
+        defer { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+        let model = AppModel(defaults: UserDefaults(suiteName: suite)!,
+                             runStore: RunStore(fileURL: FileManager.default.temporaryDirectory.appendingPathComponent("\(suite).json")),
+                             minimumAge: 0, initialFolders: [], live: false)
+        model.message = "Sorted 214 files."
+        let w = show(ContentView(initial: .sort).environment(model), width: 1000, height: 760)
+        XCTAssertEqual(model.message, "Sorted 214 files.", "still shown on the Sort tab")
+        click(w, x: 423, y: 180)                    // the Images tab
+        XCTAssertNil(model.message, "switching tabs clears the old message")
+    }
 }

@@ -24,6 +24,11 @@ final class AppModel {
     var groupFolders = false
     var message: String?
     var isWorking = false
+    /// Files handled so far while sorting or moving (nil until the total is known).
+    var progress: (done: Int, total: Int)?
+    /// True for a couple of seconds after a sort or move finished without problems (drives the green Done tick).
+    var justFinished = false
+    private var finishToken = 0
     var appearance: Appearance = .light
     var loginItemEnabled = false
     var loginItemError: String?
@@ -148,7 +153,7 @@ final class AppModel {
 
     func sortNow(automatic: Bool = false) {
         guard !isWorking else { return }
-        isWorking = true
+        isWorking = true; progress = nil; justFinished = false
         let list = enabledFolders
         let sorter = sorter
         let group = groupFolders
@@ -159,15 +164,28 @@ final class AppModel {
                 do { plans.append(try sorter.plan(folder: folder.url, groupFolders: group)) }
                 catch { errors.append("\(folder.name): \(error.localizedDescription)") }
             }
-            let run = sorter.sort(plans)
+            let run = sorter.sort(plans, progress: { done, total in
+                DispatchQueue.main.async { self.progress = (done, total) }
+            })
             await MainActor.run { [run, errors] in
                 self.finishSort(run, errors: errors, automatic: automatic)
             }
         }
     }
 
+    /// Shows the green Done tick for a moment (only if nothing newer finished meanwhile).
+    private func flashDone() {
+        justFinished = true
+        finishToken += 1
+        let token = finishToken
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { [weak self] in
+            if let self, self.finishToken == token { self.justFinished = false }
+        }
+    }
+
     private func finishSort(_ run: SortRun, errors: [String], automatic: Bool) {
-        isWorking = false
+        isWorking = false; progress = nil
+        if !run.moved.isEmpty && run.failures.isEmpty && errors.isEmpty && !automatic { flashDone() }
         if !run.moved.isEmpty {
             lastRun = run
             store.save(run)
@@ -200,15 +218,26 @@ final class AppModel {
     // MARK: Move to…
 
     func move(_ files: [URL], to folder: URL) {
-        let run = sorter.move(files, to: folder)
-        if !run.moved.isEmpty {
-            lastRun = run
-            store.save(run)
+        guard !isWorking else { message = "Please wait, another job is still running."; return }
+        isWorking = true; progress = (0, files.count); justFinished = false
+        let sorter = sorter
+        Task.detached {
+            let run = sorter.move(files, to: folder, progress: { done, total in
+                DispatchQueue.main.async { self.progress = (done, total) }
+            })
+            await MainActor.run { [run] in
+                self.isWorking = false; self.progress = nil
+                if !run.moved.isEmpty {
+                    self.lastRun = run
+                    self.store.save(run)
+                }
+                var text = run.moved.isEmpty ? "Nothing moved." : "Moved \(run.moved.count) item\(run.moved.count == 1 ? "" : "s") to \(folder.lastPathComponent)."
+                if let first = run.failures.first { text += " \(run.failures.count) problem\(run.failures.count == 1 ? "" : "s"): \(first)" }
+                else if !run.moved.isEmpty { self.flashDone() }
+                self.message = text
+                self.refresh()
+            }
         }
-        var text = run.moved.isEmpty ? "Nothing moved." : "Moved \(run.moved.count) item\(run.moved.count == 1 ? "" : "s") to \(folder.lastPathComponent)."
-        if let first = run.failures.first { text += " \(run.failures.count) problem\(run.failures.count == 1 ? "" : "s"): \(first)" }
-        message = text
-        refresh()
     }
 
     func addFavorite(_ url: URL) {

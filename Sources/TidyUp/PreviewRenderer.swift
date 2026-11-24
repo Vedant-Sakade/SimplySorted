@@ -46,6 +46,8 @@ enum PreviewRenderer {
         defer { try? FileManager.default.removeItem(at: sample) }
         let cases: [(String, ImagesView)] = [
             ("images-loaded", ImagesView(initialMode: .pixels, width: "2048", sampleImage: sample)),
+            ("images-working", ImagesView(initialMode: .pixels, width: "2048", sampleImage: sample, demo: .working(done: 3, total: 12))),
+            ("images-done", ImagesView(initialMode: .pixels, width: "2048", sampleImage: sample, demo: .finished)),
             ("images-scale", ImagesView(initialMode: .percent)),
             ("images-pixels", ImagesView(initialMode: .pixels)),
             ("images-enlarge-scale", ImagesView(initialMode: .percent, percent: 200, sourceSize: (1448, 1086))),
@@ -58,7 +60,7 @@ enum PreviewRenderer {
                     .padding(36)
                     .font(.mono(14)).foregroundStyle(Theme.ink)
                     .environment(model).environment(\.colorScheme, scheme).environment(\.previewMode, true)
-                    .frame(width: 1000, height: 800, alignment: .top)
+                    .frame(width: 1000, height: name == "images-done" ? 1250 : 800, alignment: .top)
                     .background(Theme.bg)
                 let renderer = ImageRenderer(content: page)
                 renderer.scale = 1.5

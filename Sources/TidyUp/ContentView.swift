@@ -46,23 +46,36 @@ enum SidebarItem: String, CaseIterable, Identifiable {
 struct ContentView: View {
     @Environment(AppModel.self) private var model
     @State private var selection: SidebarItem
+    /// Tabs opened so far. They stay alive when you switch away, so a job in progress, a picked image
+    /// or a result is still there when you come back.
+    @State private var visited: Set<SidebarItem>
 
     init(initial: SidebarItem = .sort) {
         _selection = State(initialValue: initial)
+        _visited = State(initialValue: [initial])
+    }
+
+    @ViewBuilder private func page(_ item: SidebarItem) -> some View {
+        switch item {
+        case .sort: SortView()
+        case .moveTo: MoveToView()
+        case .images: ImagesView()
+        case .pdf: PDFToolsView()
+        case .text: TextFromImageView()
+        case .uninstall: UninstallerView()
+        }
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             TabBar(selection: $selection)
-            Group {
-                switch selection {
-                case .sort: SortView()
-                case .moveTo: MoveToView()
-                case .images: ImagesView()
-                case .pdf: PDFToolsView()
-                case .text: TextFromImageView()
-                case .uninstall: UninstallerView()
+            ZStack(alignment: .top) {
+                ForEach(SidebarItem.allCases.filter { visited.contains($0) }, id: \.self) { item in
+                    page(item)
+                        .opacity(selection == item ? 1 : 0)
+                        .allowsHitTesting(selection == item)
+                        .accessibilityHidden(selection != item)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -75,6 +88,11 @@ struct ContentView: View {
         .background(Theme.bg.ignoresSafeArea())
         .frame(minWidth: 900, minHeight: 660)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in model.refresh() }
+        .onChange(of: selection) { _, new in
+            visited.insert(new)
+            model.message = nil                     // "Sorted 214 files." must not follow you onto other tabs
+            if new == .sort { model.refresh() }
+        }
     }
 
     private var header: some View {

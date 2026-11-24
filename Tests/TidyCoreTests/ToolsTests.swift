@@ -278,6 +278,43 @@ final class ToolsTests: XCTestCase {
         print("8K enlarge took \(String(format: "%.2f", seconds))s, output \(r.outputBytes) bytes")
     }
 
+    // MARK: Batch progress and cancel
+
+    func testBatchReportsProgressAfterEachFile() throws {
+        let files = try (1...4).map { try makePNG("b\($0).png", size: CGSize(width: 60, height: 40)) }
+        var seen: [Int] = []
+        let outcome = ImageTools.convertBatch(files, options: ImageOptions(format: .jpeg), progress: { done, total in
+            XCTAssertEqual(total, 4); seen.append(done)
+        })
+        XCTAssertEqual(seen, [1, 2, 3, 4])
+        XCTAssertEqual(outcome.results.count, 4)
+        XCTAssertEqual(outcome.completed, 4)
+        XCTAssertFalse(outcome.cancelled)
+        XCTAssertTrue(outcome.errors.isEmpty)
+    }
+
+    func testBatchCancelStopsBetweenFilesAndKeepsFinishedOnes() throws {
+        let files = try (1...5).map { try makePNG("c\($0).png", size: CGSize(width: 60, height: 40)) }
+        var done = 0
+        let outcome = ImageTools.convertBatch(files, options: ImageOptions(format: .jpeg),
+                                              isCancelled: { done >= 2 }, progress: { d, _ in done = d })
+        XCTAssertTrue(outcome.cancelled)
+        XCTAssertEqual(outcome.results.count, 2, "files finished before the cancel stay converted")
+        XCTAssertEqual(outcome.total, 5)
+        for r in outcome.results { XCTAssertTrue(FileManager.default.fileExists(atPath: r.output.path)) }
+    }
+
+    func testBatchCountsFailuresAndKeepsGoing() throws {
+        let good = try makePNG("g.png", size: CGSize(width: 60, height: 40))
+        let bad = dir.appendingPathComponent("broken.png"); try Data("not an image".utf8).write(to: bad)
+        let good2 = try makePNG("g2.png", size: CGSize(width: 60, height: 40))
+        let outcome = ImageTools.convertBatch([good, bad, good2], options: ImageOptions(format: .jpeg))
+        XCTAssertEqual(outcome.results.count, 2)
+        XCTAssertEqual(outcome.errors.count, 1)
+        XCTAssertEqual(outcome.completed, 3)
+        XCTAssertFalse(outcome.cancelled)
+    }
+
     func testSharpenChangesTheEnlargedPicture() throws {
         let png = try makePNG("sharp.png", size: CGSize(width: 160, height: 100), text: "Aa")
         let plain = try ImageTools.convert(png, options: ImageOptions(format: .png, resize: .percent(3), allowEnlarge: true, sharpen: false))

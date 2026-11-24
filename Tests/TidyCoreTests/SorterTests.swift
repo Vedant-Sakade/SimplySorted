@@ -41,6 +41,25 @@ final class SorterTests: XCTestCase {
         XCTAssertFalse(exists("a.png"))
     }
 
+    func testSortAndMoveReportProgressForEveryFile() throws {
+        for name in ["a.jpg", "b.pdf", "c.zip", "d.mp3"] { touch(name) }
+        let plan = try sorter.plan(folder: dir)
+        var sortSeen: [(Int, Int)] = []
+        let run = sorter.sort([plan], progress: { sortSeen.append(($0, $1)) })
+        XCTAssertEqual(run.moved.count, 4)
+        XCTAssertEqual(sortSeen.map(\.0), [1, 2, 3, 4])
+        XCTAssertTrue(sortSeen.allSatisfy { $0.1 == 4 })
+
+        let dest = dir.appendingPathComponent("Dest"); try FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
+        touch("x.txt"); touch("y.txt")
+        var moveSeen: [Int] = []
+        let moved = sorter.move([dir.appendingPathComponent("x.txt"), dir.appendingPathComponent("y.txt")], to: dest, progress: { d, t in
+            XCTAssertEqual(t, 2); moveSeen.append(d)
+        })
+        XCTAssertEqual(moved.moved.count, 2)
+        XCTAssertEqual(moveSeen, [1, 2])
+    }
+
     func testLeavesFoldersHiddenAndPartialDownloadsAlone() throws {
         try FileManager.default.createDirectory(at: dir.appendingPathComponent("My Project"), withIntermediateDirectories: true)
         ["x.crdownload", ".hidden.png", "real.png"].forEach(touch)

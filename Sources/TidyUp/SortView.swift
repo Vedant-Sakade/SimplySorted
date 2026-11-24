@@ -48,13 +48,17 @@ struct SortView: View {
                              progress: min(Double(model.pendingCount) / 300, 1))
                         .frame(width: 260, height: 260).frame(maxWidth: .infinity)
 
-                    if model.pendingCount > 0 {
+                    if model.isWorking {
+                        WorkProgress(title: model.progress.map { "Sorting \(min($0.done + 1, $0.total)) of \($0.total)…" } ?? "Sorting…",
+                                     fraction: model.progress.map { $0.total > 0 ? Double($0.done) / Double($0.total) : 0 })
+                    } else if model.justFinished {
+                        DonePill(title: "Sorted")
+                    } else if model.pendingCount > 0 {
                         Button { model.sortNow() } label: {
-                            Label(model.isWorking ? "Sorting…" : "Sort now", systemImage: "sparkles").frame(maxWidth: .infinity)
+                            Label("Sort now", systemImage: "sparkles").frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.pill(.filled))
                         .keyboardShortcut(.defaultAction)
-                        .disabled(model.isWorking)
                         Hint("Moves \(model.pendingCount) file\(model.pendingCount == 1 ? "" : "s") into folders like Images, Documents and Archives. Nothing is overwritten, and you can undo it.")
                     } else {
                         Hint(model.enabledFolders.isEmpty

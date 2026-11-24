@@ -122,6 +122,21 @@ public struct ImageResult: Sendable {
     public let output: URL
     public let inputBytes: Int64
     public let outputBytes: Int64
+
+    public init(source: URL, output: URL, inputBytes: Int64, outputBytes: Int64) {
+        self.source = source; self.output = output; self.inputBytes = inputBytes; self.outputBytes = outputBytes
+    }
+}
+
+/// What a batch conversion produced.
+public struct BatchOutcome: Sendable {
+    public var results: [ImageResult] = []
+    public var errors: [String] = []
+    /// True when the batch was stopped before every file was done.
+    public var cancelled = false
+    public var total = 0
+    /// Files that were started (converted or failed).
+    public var completed: Int { results.count + errors.count }
 }
 
 public enum ImageToolsError: LocalizedError {
@@ -201,6 +216,22 @@ public enum ImageTools {
             throw ImageToolsError.cannotWrite(output.lastPathComponent)
         }
         return ImageResult(source: source, output: output, inputBytes: fileSize(source), outputBytes: fileSize(output))
+    }
+
+    /// Converts a list of images one after another, reporting progress after each one.
+    /// `isCancelled` is checked before every file, so a cancel stops cleanly between pictures.
+    public static func convertBatch(_ files: [URL], options: ImageOptions, outputFolder: URL? = nil,
+                                    isCancelled: () -> Bool = { false },
+                                    progress: (_ completed: Int, _ total: Int) -> Void = { _, _ in }) -> BatchOutcome {
+        var outcome = BatchOutcome()
+        outcome.total = files.count
+        for file in files {
+            if isCancelled() { outcome.cancelled = true; break }
+            do { outcome.results.append(try convert(file, options: options, outputFolder: outputFolder)) }
+            catch { outcome.errors.append(error.localizedDescription) }
+            progress(outcome.completed, files.count)
+        }
+        return outcome
     }
 
     static func outputURL(for source: URL, format: ImageFormat, folder: URL, sameFolder: Bool) -> URL {

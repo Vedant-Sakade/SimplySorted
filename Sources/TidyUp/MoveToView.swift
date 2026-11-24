@@ -7,8 +7,8 @@ struct MoveToView: View {
 
     var body: some View {
         PageScroll {
-            TwoColumns {
-                Card(title: "Files to move", icon: "tray.and.arrow.down") {
+            TwoColumns(stretch: true) {
+                Card(title: "Files to move", icon: "tray.and.arrow.down", fill: true) {
                     DropZone(title: "Drop files or folders", subtitle: "Then pick a destination — or drop straight onto one.",
                              systemImage: "tray.and.arrow.down") { staged.append(contentsOf: $0) }
                     if !staged.isEmpty {
@@ -18,17 +18,24 @@ struct MoveToView: View {
                             Button { staged = [] } label: { Label("Clear", systemImage: "xmark") }
                                 .buttonStyle(.pill(.outlined, compact: true))
                         }
-                        VStack(alignment: .leading, spacing: 4) {
-                            ForEach(staged.prefix(12), id: \.self) {
-                                Label($0.lastPathComponent, systemImage: $0.hasDirectoryPath ? "folder" : "doc")
-                                    .font(.mono(11)).foregroundStyle(Theme.mute).lineLimit(1)
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(staged.prefix(12), id: \.self) { url in
+                                HStack(spacing: 8) {
+                                    Label(url.lastPathComponent, systemImage: url.hasDirectoryPath ? "folder" : "doc")
+                                        .font(.mono(11)).foregroundStyle(Theme.mute).lineLimit(1).truncationMode(.middle)
+                                    Spacer(minLength: 6)
+                                    Button { staged.removeAll { $0 == url } } label: { Image(systemName: "xmark") }
+                                        .buttonStyle(IconButtonStyle(size: 20)).help("Remove \(url.lastPathComponent)")
+                                }
                             }
                             if staged.count > 12 { Hint("and \(staged.count - 12) more") }
                         }
+                    } else {
+                        Hint("Drop one or many files or folders. Nothing moves until you pick a destination.")
                     }
                 }
             } right: {
-                Card(title: "Destinations", icon: "folder.badge.plus") {
+                Card(title: "Destinations", icon: "folder.badge.plus", fill: true) {
                     if model.favorites.isEmpty {
                         Hint("No destinations yet. Add the folders you move files to most, like a client or project folder.")
                     }
@@ -42,6 +49,12 @@ struct MoveToView: View {
                         if let url = chooseFolder(prompt: "Add") { model.addFavorite(url) }
                     } label: { Label("Add destination", systemImage: "plus") }
                         .buttonStyle(.pill(.outlined, compact: true))
+                    if model.isWorking {
+                        WorkProgress(title: model.progress.map { "Moving \(min($0.done + 1, $0.total)) of \($0.total)…" } ?? "Moving…",
+                                     fraction: model.progress.map { $0.total > 0 ? Double($0.done) / Double($0.total) : 0 })
+                    } else if model.justFinished {
+                        DonePill(title: "Moved")
+                    }
                     StatusLine(text: model.message)
                     if let label = model.undoLabel {
                         Button { model.undo() } label: { Label(label, systemImage: "arrow.uturn.backward") }
@@ -77,7 +90,7 @@ private struct DestinationRow: View {
                 staged = []
             } label: { Label(staged.isEmpty ? "Move" : "Move \(staged.count)", systemImage: "arrow.right") }
                 .buttonStyle(.pill(.filled, compact: true))
-                .disabled(staged.isEmpty || !exists)
+                .disabled(staged.isEmpty || !exists || model.isWorking)
             Button { model.removeFavorite(path) } label: { Image(systemName: "xmark") }
                 .buttonStyle(IconButtonStyle(size: 26))
         }

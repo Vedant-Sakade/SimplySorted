@@ -29,14 +29,15 @@ private struct MergePane: View {
     @State private var ok = true
 
     var body: some View {
-        TwoColumns {
-            Card(title: "Input", icon: "doc.on.doc") {
+        TwoColumns(stretch: true) {
+            Card(title: "Input", icon: "doc.on.doc", fill: true) {
                 DropZone(title: "Drop PDFs to merge", subtitle: "They are joined in the order listed", systemImage: "doc.on.doc", types: [.pdf]) {
                     files.append(contentsOf: $0.filter { !files.contains($0) })
                 }
+                Hint("Add as many PDFs as you like, then use the arrows on the right to put them in order. The cross removes one by mistake.")
             }
         } right: {
-            Card(title: "Order", icon: "list.number") {
+            Card(title: "Order", icon: "list.number", fill: true) {
                 if files.isEmpty { Hint("Nothing added yet.") }
                 ForEach(Array(files.enumerated()), id: \.element) { index, file in
                     HStack(spacing: 8) {
@@ -85,18 +86,17 @@ private struct SplitPane: View {
     @State private var ok = true
 
     var body: some View {
-        TwoColumns {
-            Card(title: "Input", icon: "scissors") {
+        TwoColumns(stretch: true) {
+            Card(title: "Input", icon: "scissors", fill: true) {
                 DropZone(title: "Drop a PDF to split", subtitle: "One file at a time", systemImage: "scissors", types: [.pdf], multiple: false) {
                     file = $0.first; status = nil
                 }
                 if let file {
-                    Label("\(file.lastPathComponent) · \(PDFTools.pageCount(of: file) ?? 0) pages", systemImage: "doc")
-                        .font(.mono(11)).foregroundStyle(Theme.mute).lineLimit(2)
+                    PickedFileRow(name: file.lastPathComponent, detail: "\(PDFTools.pageCount(of: file) ?? 0) pages") { self.file = nil; status = nil }
                 }
             }
         } right: {
-            Card(title: "Split by", icon: "slider.horizontal.3") {
+            Card(title: "Split by", icon: "slider.horizontal.3", fill: true) {
                 PillSegmented(selection: $everyPage, options: [(true, "Every page"), (false, "Ranges")])
                 if !everyPage {
                     PillField(placeholder: "e.g. 1-3, 5, 8-10", text: $ranges, icon: "number")
@@ -129,19 +129,36 @@ private struct CompressPane: View {
     @State private var dpi = 144.0
     @State private var status: [String] = []
     @State private var working = false
+    @State private var progressDone = 0
+    @State private var cancelled = false
+    @State private var justDone = false
+    @State private var finishTick = 0
+    @State private var job: Task<Void, Never>?
 
     var body: some View {
-        TwoColumns {
-            Card(title: "Input", icon: "arrow.down.right.and.arrow.up.left") {
+        TwoColumns(stretch: true) {
+            Card(title: "Input", icon: "arrow.down.right.and.arrow.up.left", fill: true) {
                 DropZone(title: "Drop PDFs to shrink", subtitle: "Best for scans and picture-heavy PDFs",
-                         systemImage: "arrow.down.right.and.arrow.up.left", types: [.pdf]) { files = $0; status = [] }
+                         systemImage: "arrow.down.right.and.arrow.up.left", types: [.pdf]) { files = $0; status = []; justDone = false }
                 if !files.isEmpty {
-                    Label("\(files.count) file\(files.count == 1 ? "" : "s") selected", systemImage: "checkmark.circle")
-                        .font(.mono(11)).foregroundStyle(Theme.mute)
+                    VStack(alignment: .leading, spacing: 8) {
+                        HStack {
+                            Text("\(files.count) selected").font(.mono(12, .semibold)).textCase(.uppercase).tracking(0.6)
+                            Spacer()
+                            Button { files = []; status = [] } label: { Label("Clear all", systemImage: "xmark.circle") }
+                                .buttonStyle(.pill(.outlined, compact: true)).disabled(working)
+                        }
+                        ForEach(files, id: \.self) { url in
+                            PickedFileRow(name: url.lastPathComponent, detail: formatBytes(Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0))) {
+                                files.removeAll { $0 == url }
+                            }
+                            .disabled(working)
+                        }
+                    }
                 }
             }
         } right: {
-            Card(title: "Settings", icon: "slider.horizontal.3") {
+            Card(title: "Settings", icon: "slider.horizontal.3", fill: true) {
                 SettingRow(label: "Quality") {
                     Slider(value: $quality, in: 0.2...1).tint(Theme.ink).frame(maxWidth: 190)
                     Text("\(Int((quality * 100).rounded()))%").font(.mono(12)).frame(width: 40, alignment: .trailing)
@@ -153,32 +170,78 @@ private struct CompressPane: View {
                 if quality >= 0.9 || dpi >= 200 {
                     Hint("High quality keeps pages sharp but the file may not shrink much. If it can’t get smaller, it is left as it is.")
                 }
-                Button { compress() } label: {
-                    Label(working ? "Working…" : "Compress", systemImage: "arrow.down.right.and.arrow.up.left").frame(maxWidth: .infinity)
+                if working {
+                    WorkProgress(title: files.count > 1 ? "Compressing \(min(progressDone + 1, files.count)) of \(files.count)…" : "Compressing…",
+                                 fraction: files.count > 1 ? Double(progressDone) / Double(files.count) : nil,
+                                 onCancel: files.count > 1 ? { job?.cancel() } : nil)
+                } else if justDone {
+                    DonePill()
+                } else {
+                    Button { compress() } label: {
+                        Label("Compress", systemImage: "arrow.down.right.and.arrow.up.left").frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.pill(.filled)).disabled(files.isEmpty)
                 }
-                .buttonStyle(.pill(.filled)).disabled(files.isEmpty || working)
                 if files.isEmpty { Hint("Drop one or more PDFs first.") }
+                if cancelled { StatusLine(text: "Cancelled after \(progressDone) of \(files.count).", isError: true) }
                 ForEach(status, id: \.self) { Text($0).font(.mono(11)).foregroundStyle(Theme.mute) }
             }
         }
     }
 
     private func compress() {
-        working = true; status = []
+        working = true; status = []; cancelled = false; justDone = false; progressDone = 0
         let list = files, q = quality, d = dpi
-        Task.detached {
+        let started = Date()
+        job = Task.detached(priority: .userInitiated) {
             var lines: [String] = []
+            var failed = false, stopped = false, done = 0
             for file in list {
+                if Task.isCancelled { stopped = true; break }
                 let out = PDFTools.unique(file.deletingLastPathComponent().appendingPathComponent(file.deletingPathExtension().lastPathComponent + "-compressed.pdf"))
                 do {
                     let r = try PDFTools.compress(file, quality: q, dpi: d, to: out)
                     lines.append(r.output != nil
                         ? "✓ \(file.lastPathComponent): \(formatBytes(r.before)) → \(formatBytes(r.after)), saved as \(out.lastPathComponent)"
                         : "– \(file.lastPathComponent): would not get smaller, left alone")
-                } catch { lines.append("! \(file.lastPathComponent): \(error.localizedDescription)") }
+                } catch { lines.append("! \(file.lastPathComponent): \(error.localizedDescription)"); failed = true }
+                done += 1
+                let completed = done
+                await MainActor.run { progressDone = completed }
             }
-            await MainActor.run { [lines] in status = lines; working = false }
+            let elapsed = Date().timeIntervalSince(started)
+            if elapsed < 0.6, !stopped { try? await Task.sleep(nanoseconds: UInt64((0.6 - elapsed) * 1_000_000_000)) }
+            let finalLines = lines, anyFailed = failed, wasStopped = stopped
+            let tick = await MainActor.run { () -> Int in
+                status = finalLines; working = false; job = nil; cancelled = wasStopped
+                justDone = !anyFailed && !wasStopped && !finalLines.isEmpty
+                finishTick += 1
+                return finishTick
+            }
+            if await MainActor.run(body: { justDone }) {
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                await MainActor.run { if finishTick == tick { justDone = false } }
+            }
         }
+    }
+}
+
+/// A picked file with a cross to take it out again (for a wrong pick).
+struct PickedFileRow: View {
+    var name: String
+    var detail: String
+    var onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "doc").font(.system(size: 12, weight: .light))
+            Text(name).lineLimit(1).truncationMode(.middle)
+            Spacer(minLength: 8)
+            Text(detail).foregroundStyle(Theme.mute).lineLimit(1)
+            Button(action: onRemove) { Image(systemName: "xmark") }
+                .buttonStyle(IconButtonStyle(size: 20)).help("Remove \(name)")
+        }
+        .font(.mono(11))
     }
 }
 
@@ -261,17 +324,16 @@ struct DeletePane: View {
     private var canDelete: Bool { !selected.isEmpty && selected.count < pageCount }
 
     var body: some View {
-        TwoColumns {
-            Card(title: "Input", icon: "doc") {
+        TwoColumns(stretch: true) {
+            Card(title: "Input", icon: "doc", fill: true) {
                 DropZone(title: "Drop a PDF", subtitle: "Then click the pages you want to remove",
                          systemImage: "doc", types: [.pdf], multiple: false) { load($0.first) }
                 if let file {
-                    Label("\(file.lastPathComponent) · \(pageCount) pages", systemImage: "checkmark.circle")
-                        .font(.mono(12)).foregroundStyle(Theme.mute).lineLimit(2)
+                    PickedFileRow(name: file.lastPathComponent, detail: "\(pageCount) pages") { clear() }
                 }
             }
         } right: {
-            Card(title: "Pages to delete", icon: "trash") {
+            Card(title: "Pages to delete", icon: "trash", fill: true) {
                 if file == nil {
                     Hint("Drop a PDF first.")
                 } else {
@@ -310,6 +372,10 @@ struct DeletePane: View {
                 }
             }
         }
+    }
+
+    private func clear() {
+        file = nil; document = nil; pageCount = 0; selected = []; rangeText = ""; rangeError = nil; status = nil
     }
 
     private func load(_ url: URL?) {

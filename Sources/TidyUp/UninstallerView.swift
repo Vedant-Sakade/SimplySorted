@@ -5,6 +5,8 @@ struct UninstallerView: View {
     @State private var apps: [InstalledApp] = []
     @State private var search = ""
     @State private var selected: InstalledApp?
+    @State private var loadingApps = false
+    @State private var removedNote: String?
 
     private var shown: [InstalledApp] {
         search.isEmpty ? apps : apps.filter { $0.name.localizedCaseInsensitiveContains(search) }
@@ -14,6 +16,8 @@ struct UninstallerView: View {
         HStack(alignment: .top, spacing: 20) {
             Card(title: "Apps", icon: "square.grid.2x2") {
                 PillField(placeholder: "Search apps", text: $search, icon: "magnifyingglass")
+                if loadingApps { WorkProgress(title: "Finding your apps…", fraction: nil) }
+                if !loadingApps && shown.isEmpty { Hint(search.isEmpty ? "No apps found." : "No app matches “\(search)”.") }
                 AdaptiveScroll {
                     LazyVStack(spacing: 4) {
                         ForEach(shown) { app in
@@ -40,9 +44,18 @@ struct UninstallerView: View {
 
             Card(title: "Remove", icon: "trash") {
                 if let app = selected {
-                    AppDetail(app: app, onRemoved: { selected = nil; apps = AppUninstaller.installedApps() }).id(app.id)
+                    AppDetail(app: app, onRemoved: { note in
+                        removedNote = note; selected = nil; loadApps()
+                    }).id(app.id)
                 } else {
                     VStack(spacing: 10) {
+                        if let removedNote {
+                            Label(removedNote, systemImage: "checkmark.circle.fill")
+                                .font(.mono(13, .semibold)).foregroundStyle(Theme.bg)
+                                .padding(.horizontal, 16).padding(.vertical, 12)
+                                .background(Capsule().fill(Theme.good))
+                                .padding(.bottom, 10)
+                        }
                         Image(systemName: "trash").font(.system(size: 30, weight: .light)).frame(width: 70, height: 70)
                             .overlay(Circle().stroke(Theme.ink, lineWidth: 1.2))
                         Text("Pick an app").font(.mono(13, .semibold)).textCase(.uppercase)
@@ -54,7 +67,16 @@ struct UninstallerView: View {
             }
         }
         .padding(.top, 22).padding(.bottom, 28)
-        .onAppear { if apps.isEmpty { apps = AppUninstaller.installedApps() } }
+        .onAppear { if apps.isEmpty { loadApps() } }
+    }
+
+    /// The app list is read off the main thread so the tab opens instantly.
+    private func loadApps() {
+        loadingApps = true
+        Task.detached {
+            let found = AppUninstaller.installedApps()
+            await MainActor.run { [found] in apps = found; loadingApps = false }
+        }
     }
 }
 
@@ -68,7 +90,7 @@ private struct AppIcon: View {
 
 private struct AppDetail: View {
     let app: InstalledApp
-    var onRemoved: () -> Void
+    var onRemoved: (String) -> Void
 
     @State private var leftovers: [Leftover] = []
     @State private var chosen: Set<URL> = []
@@ -166,6 +188,9 @@ private struct AppDetail: View {
         let urls = items.filter { chosen.contains($0) }
         let (trashed, failures) = AppUninstaller.moveToTrash(urls)
         result = "Moved \(trashed) item\(trashed == 1 ? "" : "s") to the Trash." + (failures.isEmpty ? "" : " \(failures.count) failed: \(failures[0])")
-        if trashed > 0 && failures.isEmpty { DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { onRemoved() } }
+        if trashed > 0 && failures.isEmpty {
+            let note = "\(app.name) removed · \(formatBytes(chosenSize)) freed"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { onRemoved(note) }
+        }
     }
 }

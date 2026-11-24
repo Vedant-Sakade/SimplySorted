@@ -125,11 +125,14 @@ public struct Sorter: Sendable {
     // MARK: Sort
 
     /// Performs the plans. Never overwrites: a name clash becomes "name 2.ext".
-    public func sort(_ plans: [SortPlan]) -> SortRun {
+    public func sort(_ plans: [SortPlan], progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }) -> SortRun {
         let fm = FileManager.default
         var run = SortRun()
+        let total = plans.reduce(0) { $0 + $1.moves.count }
+        var done = 0
         for plan in plans {
             for move in plan.moves {
+                defer { done += 1; progress(done, total) }
                 let categoryFolder = plan.folder.appendingPathComponent(move.category.rawValue, isDirectory: true)
                 do {
                     if !fm.fileExists(atPath: categoryFolder.path) {
@@ -148,11 +151,13 @@ public struct Sorter: Sendable {
     }
 
     /// Moves chosen files into one folder ("Move to..."). Same safety rules as sorting: never overwrites.
-    public func move(_ files: [URL], to folder: URL) -> SortRun {
+    public func move(_ files: [URL], to folder: URL, progress: (_ done: Int, _ total: Int) -> Void = { _, _ in }) -> SortRun {
         let fm = FileManager.default
         var run = SortRun()
         run.kind = "move"
+        var done = 0
         for file in files {
+            defer { done += 1; progress(done, files.count) }
             let source = file.standardizedFileURL
             let target = folder.standardizedFileURL
             if source.deletingLastPathComponent() == target { continue }
