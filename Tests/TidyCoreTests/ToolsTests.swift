@@ -1,4 +1,5 @@
 import XCTest
+import UniformTypeIdentifiers
 import AppKit
 import PDFKit
 @testable import TidyCore
@@ -120,6 +121,78 @@ final class ToolsTests: XCTestCase {
         XCTAssertEqual(pixelSize(small.output).0, 200)
         let same = try ImageTools.convert(png, options: ImageOptions(format: .png, maxDimension: 99999))
         XCTAssertEqual(pixelSize(same.output).0, pixelSize(png).0, "an image smaller than the limit must keep its size")
+    }
+
+    func testResizeModeMath() {
+        XCTAssertTrue(ResizeMode.original.targetSize(width: 4000, height: 3000) == (4000, 3000))
+        XCTAssertTrue(ResizeMode.percent(0.5).targetSize(width: 4000, height: 3000) == (2000, 1500))
+        XCTAssertTrue(ResizeMode.percent(0.333).targetSize(width: 1000, height: 501) == (333, 167))
+        XCTAssertTrue(ResizeMode.percent(2.0).targetSize(width: 400, height: 300) == (400, 300), "percent never enlarges")
+        XCTAssertTrue(ResizeMode.percent(0).targetSize(width: 1000, height: 1000) == (10, 10), "percent is clamped to 1%")
+        XCTAssertTrue(ResizeMode.fit(width: 800, height: nil).targetSize(width: 4000, height: 3000) == (800, 600))
+        XCTAssertTrue(ResizeMode.fit(width: nil, height: 600).targetSize(width: 4000, height: 3000) == (800, 600))
+        XCTAssertTrue(ResizeMode.fit(width: 800, height: 300).targetSize(width: 4000, height: 3000) == (400, 300), "the tighter side wins")
+        XCTAssertTrue(ResizeMode.fit(width: 9999, height: 9999).targetSize(width: 400, height: 300) == (400, 300), "fit never enlarges")
+        XCTAssertTrue(ResizeMode.fit(width: nil, height: nil).targetSize(width: 400, height: 300) == (400, 300))
+        XCTAssertTrue(ResizeMode.fit(width: 0, height: -5).targetSize(width: 400, height: 300) == (400, 300), "zero or negative means no limit")
+    }
+
+    func testScaleByPercentGivesExactSize() throws {
+        let png = try makePNG("pct.png", size: CGSize(width: 800, height: 400))
+        let src = pixelSize(png)
+        let r = try ImageTools.convert(png, options: ImageOptions(format: .png, resize: .percent(0.5)))
+        let out = pixelSize(r.output)
+        XCTAssertEqual(out.0, Int((Double(src.0) * 0.5).rounded()))
+        XCTAssertEqual(out.1, Int((Double(src.1) * 0.5).rounded()))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: png.path), "original must stay")
+    }
+
+    func testFitToWidthKeepsShapeAndHitsRequestedWidth() throws {
+        let png = try makePNG("fitw.png", size: CGSize(width: 800, height: 400))
+        let src = pixelSize(png)
+        let want = src.0 / 4 + 1   // an awkward number on purpose
+        let r = try ImageTools.convert(png, options: ImageOptions(format: .png, resize: .fit(width: want, height: nil)))
+        let out = pixelSize(r.output)
+        XCTAssertEqual(out.0, want, "the width must be exactly what was asked for")
+        XCTAssertEqual(Double(out.1), Double(src.1) * Double(want) / Double(src.0), accuracy: 1)
+    }
+
+    func testFitToHeightOnTallImageHitsRequestedHeight() throws {
+        let png = try makePNG("fith.png", size: CGSize(width: 300, height: 900))
+        let src = pixelSize(png)
+        let want = src.1 / 3 - 1
+        let r = try ImageTools.convert(png, options: ImageOptions(format: .jpeg, resize: .fit(width: nil, height: want)))
+        let out = pixelSize(r.output)
+        XCTAssertEqual(out.1, want)
+        XCTAssertEqual(Double(out.0), Double(src.0) * Double(want) / Double(src.1), accuracy: 1)
+    }
+
+    func testPixelSizeReadsUnrotatedImage() throws {
+        let png = try makePNG("ps.png", size: CGSize(width: 640, height: 320))
+        let size = try XCTUnwrap(ImageTools.pixelSize(of: png))
+        XCTAssertEqual(size.width, pixelSize(png).0)
+        XCTAssertEqual(size.height, pixelSize(png).1)
+        XCTAssertNil(ImageTools.pixelSize(of: dir.appendingPathComponent("missing.png")))
+    }
+
+    /// A phone photo is stored sideways with an EXIF "rotate" flag; sizes must follow what the user sees.
+    func testSizesFollowCameraRotation() throws {
+        let png = try makePNG("sideways-src.png", size: CGSize(width: 600, height: 300))
+        let srcImage = try XCTUnwrap(CGImageSourceCreateImageAtIndex(CGImageSourceCreateWithURL(png as CFURL, nil)!, 0, nil))
+        let jpg = dir.appendingPathComponent("sideways.jpg")
+        let dest = try XCTUnwrap(CGImageDestinationCreateWithURL(jpg as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(dest, srcImage, [kCGImagePropertyOrientation: 6] as CFDictionary)   // 6 = rotate 90 degrees
+        XCTAssertTrue(CGImageDestinationFinalize(dest))
+
+        let shown = try XCTUnwrap(ImageTools.pixelSize(of: jpg))
+        XCTAssertEqual(shown.width, srcImage.height, "a rotated photo reports its upright width")
+        XCTAssertEqual(shown.height, srcImage.width)
+
+        let want = shown.width / 2
+        let r = try ImageTools.convert(jpg, options: ImageOptions(format: .jpeg, resize: .fit(width: want, height: nil)))
+        let out = pixelSize(r.output)
+        XCTAssertEqual(out.0, want, "width limits apply to the upright image")
+        XCTAssertGreaterThan(out.1, out.0, "the photo is still taller than it is wide")
     }
 
     func testRecompressSameFormatDoesNotOverwriteOriginal() throws {

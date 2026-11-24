@@ -28,7 +28,27 @@ enum PreviewRenderer {
             }
         }
         renderDeletePages(model: model, to: out)
+        renderImageModes(model: model, to: out)
         try? FileManager.default.removeItem(at: demo)
+    }
+
+    /// The Images tab with the Scale and Pixels size modes switched on.
+    private static func renderImageModes(model: AppModel, to out: URL) {
+        for (mode, name) in [(ImagesView.SizeMode.percent, "images-scale"), (.pixels, "images-pixels")] {
+            for scheme in [ColorScheme.light, .dark] {
+                let page = ImagesView(initialMode: mode)
+                    .padding(36)
+                    .font(.mono(14)).foregroundStyle(Theme.ink)
+                    .environment(model).environment(\.colorScheme, scheme).environment(\.previewMode, true)
+                    .frame(width: 1000, height: 800, alignment: .top)
+                    .background(Theme.bg)
+                let renderer = ImageRenderer(content: page)
+                renderer.scale = 1.5
+                if let tiff = renderer.nsImage?.tiffRepresentation, let png = NSBitmapImageRep(data: tiff)?.representation(using: .png, properties: [:]) {
+                    try? png.write(to: out.appendingPathComponent("\(name)-\(scheme == .dark ? "dark" : "light").png"))
+                }
+            }
+        }
     }
 
     /// The Delete pages tab with a 7-page PDF open and pages 2 and 5 picked.

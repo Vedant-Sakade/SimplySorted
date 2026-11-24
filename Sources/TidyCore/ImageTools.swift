@@ -26,19 +26,52 @@ public enum ImageFormat: String, CaseIterable, Identifiable, Sendable {
     public var usesQuality: Bool { self != .png }
 }
 
+/// How an image's pixel size changes. Images are only ever made smaller, never enlarged.
+public enum ResizeMode: Equatable, Sendable {
+    case original
+    /// Fraction of the original size, 0.01 ... 1.0 (0.5 = half the width and height).
+    case percent(Double)
+    /// Fit inside a width / height box, keeping the shape. Either side may be nil (no limit).
+    case fit(width: Int?, height: Int?)
+
+    /// The output size for an image of `width` x `height` pixels (after rotation is applied).
+    public func targetSize(width: Int, height: Int) -> (width: Int, height: Int) {
+        guard width > 0, height > 0 else { return (width, height) }
+        var scale = 1.0
+        switch self {
+        case .original:
+            break
+        case .percent(let p):
+            scale = min(max(p, 0.01), 1.0)
+        case .fit(let w, let h):
+            if let w, w > 0 { scale = min(scale, Double(w) / Double(width)) }
+            if let h, h > 0 { scale = min(scale, Double(h) / Double(height)) }
+        }
+        if scale >= 1 { return (width, height) }
+        return (max(1, Int((Double(width) * scale).rounded())), max(1, Int((Double(height) * scale).rounded())))
+    }
+}
+
 public struct ImageOptions: Sendable {
     public var format: ImageFormat
     /// 0.1 ... 1.0 (JPEG / HEIC only)
     public var quality: Double
-    /// Longest side in pixels. Smaller images are never enlarged. nil keeps the original size.
-    public var maxDimension: Int?
+    /// Pixel size change: original, a percentage, or a width / height box.
+    public var resize: ResizeMode
     /// Drops EXIF, GPS location and other metadata.
     public var stripMetadata: Bool
 
-    public init(format: ImageFormat = .jpeg, quality: Double = 0.8, maxDimension: Int? = nil, stripMetadata: Bool = false) {
+    /// Longest side in pixels (shortcut for a square `fit` box). nil keeps the original size.
+    public var maxDimension: Int? {
+        get { if case .fit(let w, let h) = resize, w == h { return w } else { return nil } }
+        set { resize = newValue.map { .fit(width: $0, height: $0) } ?? .original }
+    }
+
+    public init(format: ImageFormat = .jpeg, quality: Double = 0.8, maxDimension: Int? = nil,
+                resize: ResizeMode? = nil, stripMetadata: Bool = false) {
         self.format = format
         self.quality = quality
-        self.maxDimension = maxDimension
+        self.resize = resize ?? maxDimension.map { .fit(width: $0, height: $0) } ?? .original
         self.stripMetadata = stripMetadata
     }
 }
@@ -71,22 +104,25 @@ public enum ImageTools {
             throw ImageToolsError.cannotRead(source.lastPathComponent)
         }
         let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] ?? [:]
-        let width = (props[kCGImagePropertyPixelWidth] as? Int) ?? 0
-        let height = (props[kCGImagePropertyPixelHeight] as? Int) ?? 0
-        guard width > 0, height > 0 else { throw ImageToolsError.cannotRead(source.lastPathComponent) }
+        guard let (width, height) = orientedSize(of: props) else { throw ImageToolsError.cannotRead(source.lastPathComponent) }
 
         // Always decode through the thumbnail path so camera rotation is baked into the pixels
         // (needed when metadata is stripped) and resizing uses high-quality scaling.
-        let longest = max(width, height)
-        let target = min(options.maxDimension ?? longest, longest)
+        let target = options.resize.targetSize(width: width, height: height)
         let decodeOptions: [CFString: Any] = [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceShouldCacheImmediately: true,
-            kCGImageSourceThumbnailMaxPixelSize: target,
+            kCGImageSourceThumbnailMaxPixelSize: max(target.width, target.height),
         ]
         guard var image = CGImageSourceCreateThumbnailAtIndex(src, 0, decodeOptions as CFDictionary) else {
             throw ImageToolsError.cannotRead(source.lastPathComponent)
+        }
+        // The decoder fixes the longest side; nudge the other side so the size is exactly what was asked for.
+        if options.resize != .original, (image.width != target.width || image.height != target.height),
+           abs(image.width - target.width) <= 2, abs(image.height - target.height) <= 2,
+           let exact = redraw(image, width: target.width, height: target.height) {
+            image = exact
         }
         if options.format == .jpeg, hasAlpha(image) {
             image = flattenOnWhite(image) ?? image
@@ -131,6 +167,33 @@ public enum ImageTools {
             n += 1
         }
         return candidate
+    }
+
+    /// Pixel size of an image as it is displayed (camera rotation applied), or nil if unreadable.
+    public static func pixelSize(of url: URL) -> (width: Int, height: Int)? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any] else { return nil }
+        guard let size = orientedSize(of: props) else { return nil }
+        return (size.0, size.1)
+    }
+
+    static func orientedSize(of props: [CFString: Any]) -> (Int, Int)? {
+        let w = (props[kCGImagePropertyPixelWidth] as? Int) ?? 0
+        let h = (props[kCGImagePropertyPixelHeight] as? Int) ?? 0
+        guard w > 0, h > 0 else { return nil }
+        let orientation = (props[kCGImagePropertyOrientation] as? Int) ?? 1
+        return (5...8).contains(orientation) ? (h, w) : (w, h)
+    }
+
+    static func redraw(_ image: CGImage, width: Int, height: Int) -> CGImage? {
+        let space = image.colorSpace ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        let info = hasAlpha(image) ? CGImageAlphaInfo.premultipliedLast.rawValue : CGImageAlphaInfo.noneSkipLast.rawValue
+        guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: space, bitmapInfo: info) ?? CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
+                                  space: CGColorSpace(name: CGColorSpace.sRGB)!, bitmapInfo: info) else { return nil }
+        ctx.interpolationQuality = .high
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return ctx.makeImage()
     }
 
     static func hasAlpha(_ image: CGImage) -> Bool {

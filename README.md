@@ -55,7 +55,7 @@ Downloads and Desktop fill up with screenshots, PDFs, installers, zips and files
 
 - Convert to **JPEG, PNG or HEIC**.
 - **Quality** slider up to 100%, so you pick the balance between file size and sharpness.
-- **Resize** by longest side. Small images are never enlarged.
+- **Scale the resolution** three ways: keep the original size, **Scale** by a percentage (10% to 100%), or set exact **Pixels** by width, height or both. The shape is always kept, and a live line shows the result, for example `4032 × 3024 → 2016 × 1512 px`. Images are never enlarged, and phone photos that are stored sideways are measured the way you see them.
 - **Remove location and camera info** (GPS and other hidden photo data) before you share a picture.
 - Shows how much space you saved. Your original pictures are never replaced.
 
